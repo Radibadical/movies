@@ -22,6 +22,12 @@ DEFAULT_WORKSHEETS = [
     "Dudeist Movies",
     "Documentaries",
     "Horror/Halloween",
+    "Watch List",
+    "Weird Watch List",
+    "Dudeist Watch List",
+    "Horror Watch List",
+    "Documentaries Watch List",
+    "Christmas",
 ]
 WORKSHEET_NAMES = [
     w.strip()
