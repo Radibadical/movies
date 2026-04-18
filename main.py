@@ -497,7 +497,12 @@ def merge_watch_lists(spreadsheet):
             new_row = {}
             for col in WATCH_LIST_COLUMNS:
                 if col == "Category":
-                    new_row[col] = category
+                    # For the Watch List tab itself, rows may already have a
+                    # category set from a previous merge — preserve it.
+                    # For source tabs (Weird Watch List etc.) the col won't
+                    # exist, so fall back to the tab's default category.
+                    existing = row[col_index[col]].strip() if col in col_index else ""
+                    new_row[col] = existing if existing else category
                 elif col in col_index:
                     new_row[col] = row[col_index[col]]
                 else:
