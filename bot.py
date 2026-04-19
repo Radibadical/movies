@@ -18,6 +18,7 @@ from main import (
     WATCH_LIST_KEYWORD,
     WATCH_LIST_TABS,
     WORKSHEET_NAMES,
+    OmdbInvalidKey,
     OmdbQuotaExceeded,
     clean,
     fetch_omdb,
@@ -132,6 +133,9 @@ async def _fetch_omdb_safe(update: Update, title: str) -> dict | None:
     """Fetch from OMDb with user-facing error messages. Returns data or None."""
     try:
         data = fetch_omdb(title, OMDB_API_KEY)
+    except OmdbInvalidKey:
+        await update.message.reply_text("OMDb API key is invalid or not yet activated. Check the .env file.")
+        return None
     except OmdbQuotaExceeded:
         await update.message.reply_text("OMDb daily quota reached. Try again tomorrow.")
         return None

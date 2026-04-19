@@ -88,6 +88,10 @@ class OmdbQuotaExceeded(Exception):
     pass
 
 
+class OmdbInvalidKey(Exception):
+    pass
+
+
 def fetch_omdb(title: str, api_key: str) -> dict | None:
     """Query OMDb by title. Returns the data dict or None if not found.
     Raises OmdbQuotaExceeded if the daily request limit is hit."""
@@ -97,9 +101,7 @@ def fetch_omdb(title: str, api_key: str) -> dict | None:
         timeout=10,
     )
     if response.status_code == 401:
-        print(f"\nError: OMDb API key is invalid or not yet activated.")
-        print("Check your email for an activation link from OMDb and try again.")
-        sys.exit(1)
+        raise OmdbInvalidKey()
     response.raise_for_status()
     data = response.json()
     if data.get("Response") != "True":
@@ -395,6 +397,10 @@ def collect_changes(ws) -> tuple[list[dict], list[str], list[str], bool]:
         print(f"    Querying: {title}", end="", flush=True)
         try:
             omdb_data = fetch_omdb(title, OMDB_API_KEY)
+        except OmdbInvalidKey:
+            print(f"\nError: OMDb API key is invalid or not yet activated.")
+            print("Check your email for an activation link from OMDb and try again.")
+            sys.exit(1)
         except OmdbQuotaExceeded:
             print(f" [quota exceeded — stopping]")
             quota_hit = True
