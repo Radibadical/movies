@@ -6,7 +6,7 @@ This project maintains a Google Sheets movie list using OMDb data and exposes a
 Telegram bot for on-the-go updates. Two entry points:
 
 - **`main.py`** — CLI script; run locally to bulk-fill OMDb data, merge watch list
-  tabs, deduplicate, and fix title casing.
+  tabs, deduplicate, fix title casing, renumber integer ranks, and sort star-rated rows.
 - **`bot.py`** — Telegram bot; runs as a systemd user service and handles all
   interactive commands.
 
@@ -26,13 +26,13 @@ All secrets live in `.env` (git-ignored). Never commit `.env` or `credentials.js
 
 One spreadsheet, multiple tabs managed by `WORKSHEET_NAMES` in `main.py`.
 
-**Main list tabs** (columns: Rank, Title, Year, Director, Country, Genre, IMDB Rating, Metascore, Notes):
+**Main list tabs** (columns: Rank, Title, Year, Director, Country, Genre, IMDB Rating, Metascore, Last Watched, Notes):
 - Movies, Weird Movies, Dudeist Movies, Documentaries, Horror/Halloween, TV, Christmas
 
 **Rank column — two zones per sheet:**
 - **Numbered ranks (1–200)**: stored inside a Google Sheets Table object. Inserting within this range via `insertDimension` automatically expands the table.
 - **Star ratings**: regular rows below the table, separated by a blank row. Format: `★ ★ ★ ★ ✮` (full stars + optional `✮` half-star, space-separated). Valid values: 5, 4.5, 4, 3.5, 3, 2.5.
-- Sort order: numbered ranks ascending first, then star ratings descending.
+- Sort order: numbered ranks ascending first, then star ratings descending, then alphabetical within the same star value.
 - Blank Rank cells (the separator row) are skipped during insertion scans — handled by `if r and _rank_sort_key(r) >= new_key`.
 
 **Watch list tab** (columns: Watch Order, Title, Year, Director, Country, Genre, IMDB Rating, Metascore, Category, Date Added, Notes):
@@ -77,6 +77,16 @@ python main.py --skip-omdb  # normalize/merge/sort only, no API calls
 
 `--skip-omdb` skips `collect_changes()` entirely — use when near the daily quota.
 
+**Per-tab processing order (non-watch-list sheets):**
+1. `normalize_columns` — add/reorder columns
+2. `dedup_titles` — remove duplicates
+3. `check_title_casing` — interactive title case prompts
+4. `renumber_ranks` — reassign integer ranks sequentially by row order
+5. `sort_star_rated_rows` — sort star-rated rows by rating desc, then title asc
+6. `collect_changes` / apply OMDb updates (skipped with `--skip-omdb`)
+
+Watch list tabs skip steps 4–5 and instead sort by Watch Order after OMDb updates.
+
 ## Telegram bot
 
 ```bash
@@ -102,7 +112,7 @@ Restart policy: `on-failure` with 10s delay.
 |---|---|
 | `/addwatch <title> [category]` | Add to Watch List (fetches OMDb data, records Date Added) |
 | `/setorder <title> <rank>` | Set Watch Order or Rank; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
-| `/watched <title> [| sheet [| note [| rank]]]` | Remove from Watch List; rank accepts same format as /setorder; falls back to OMDb if not in watch list |
+| `/watched <title> [| sheet [| note [| rank]]]` | Remove from Watch List; rank accepts same format as /setorder; falls back to OMDb if not in watch list; stamps Last Watched |
 | `/history [n]` | Show last n rank changes and watched events (default 10) |
 | `/note <title> | <note text>` | Add/update Notes field |
 | `/find <title>` | Substring search across all sheets, full field display |
@@ -143,8 +153,47 @@ this way.
 ### Column normalization
 
 `normalize_columns(ws, target_cols)` ensures columns exist in the correct order.
-It clears and rewrites the sheet when order/presence differs. Reports missing and
-reordered columns to stdout.
+
+- **Insert-only path** (no reordering needed): uses `ws.insert_cols([[col_name]], col=pos)`,
+  which calls `insertDimension` under the hood. Google Sheets Tables whose range is
+  intersected automatically expand — this is the table-safe path.
+- **Clear+rewrite path** (existing columns need reordering): clears and rewrites the
+  full sheet. Prints a warning to verify the Table range in Sheets afterward, since
+  the Table boundary does not automatically adjust on a full rewrite.
+
+### Rank helpers (bot.py)
+
+```python
+VALID_STAR_VALS: frozenset[float] = frozenset({2.5, 3.0, 3.5, 4.0, 4.5, 5.0})
+
+def _stars_to_str(val: float) -> str:
+    # "★ ★ ★ ★ ✮" for 4.5, etc.
+
+def _rank_sort_key(s: str) -> tuple[int, float]:
+    # (0, int_rank) for integers, (1, -star_val) for stars, (2, 0.0) otherwise
+
+def _parse_rank_input(s: str) -> tuple[str, str] | None:
+    # "4" → ("4", "rank #4"); "4stars" → ("★ ★ ★ ★", "4 stars"); returns None on bad input
+```
+
+Input disambiguation: plain number = numeric rank; `Nstars` or `N.5stars` = star rating.
+
+### Row repositioning after rank change
+
+`_reposition_by_rank(ws, row_num, stored_rank, canonical_title) -> bool` (bot.py):
+- Called by `/setorder` for non-watch-list sheets after updating the rank cell.
+- Re-reads all sheet values (capturing the already-updated rank and all other fields).
+- Finds the first row (skipping current) whose sort key ≥ new key; deletes current
+  row and re-inserts at that position (offset adjusted for the deletion).
+- Sort key: `(0, int_rank, "")` for integers; `(1, -stars, title_lower)` for star ratings.
+- Returns `False` (no-op) if the row is already in the correct position.
+
+### History log
+
+`_append_log(ss, event_type, title, detail)` (bot.py):
+- Lazy-creates the "History" tab with `LOG_COLUMNS = ["Date", "Type", "Title", "Detail"]`
+  on first call. Silently swallows all errors so logging never breaks a command.
+- Called by `/setorder` ("Rank Changed") and `/watched` ("Watched").
 
 ### Deduplication
 
@@ -157,6 +206,14 @@ reordered columns to stdout.
 
 `check_title_casing(ws, headers)` applies Chicago-style title case with an interactive
 accept/reject prompt per title. Preserves acronym casing (e.g. "MCU" stays "MCU").
+
+### Rank renumbering and star sorting (main.py)
+
+`renumber_ranks(ws, headers)`: reassigns integer Rank values (1, 2, 3…) sequentially
+by current row order. Skips star-rated and blank Rank cells. Batch `update_cells`.
+
+`sort_star_rated_rows(ws, headers)`: sorts rows containing `★`/`✮` in Rank by star
+value descending, then title alphabetically. Single batch write.
 
 ## Dependencies
 
