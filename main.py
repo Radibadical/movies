@@ -49,13 +49,13 @@ OMDB_FIELDS = {
 }
 
 # These columns are never touched regardless of what OMDb returns
-PRESERVE_COLUMNS = {"Rank", "Notes", "Title", "Watch Order", "Date Added"}
+PRESERVE_COLUMNS = {"Rank", "Notes", "Title", "Watch Order", "Date Added", "Last Watched"}
 
 # Tabs whose names contain this string are sorted by "Watch Order" after updates
 WATCH_LIST_KEYWORD = "Watch List"
 
 # Canonical column order for each sheet type
-MOVIE_LIST_COLUMNS = ["Rank", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Notes"]
+MOVIE_LIST_COLUMNS = ["Rank", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Last Watched", "Notes"]
 WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Category", "Date Added", "Notes"]
 
 # History log tab
@@ -126,30 +126,53 @@ def normalize_columns(ws, target_cols: list[str]) -> list[str]:
     """Ensure all target_cols exist and appear first, in order.
     Missing columns are added (empty). Extra columns already in the sheet are
     preserved at the end. No-ops if already correct.
+
+    When only new columns need to be added (no reordering), uses
+    insertDimension so that any Google Sheets Table on the sheet automatically
+    expands to include the new column. Falls back to clear+rewrite only when
+    existing columns need to be reordered.
+
     Returns the final header list."""
     all_values = ws.get_all_values()
     if not all_values:
         ws.update([target_cols], "A1")
         return target_cols
 
-    # Strip whitespace from existing headers to avoid false mismatches
     current_headers = [h.strip() for h in all_values[0]]
     rows = all_values[1:]
 
-    # Columns already in the sheet but not in the target spec — keep at end
     extra_cols = [h for h in current_headers if h and h not in target_cols]
     expected_headers = target_cols + extra_cols
 
     if current_headers == expected_headers:
-        return current_headers  # already correct — nothing to do
+        return current_headers
 
-    # Report what's changing
     missing = [c for c in target_cols if c not in current_headers]
-    reordered = [c for c in target_cols if c in current_headers and current_headers.index(c) != target_cols.index(c)]
+
+    # Determine whether existing columns need reordering
+    existing_in_expected = [c for c in expected_headers if c in set(current_headers)]
+    existing_in_current = [c for c in current_headers if c in set(expected_headers)]
+    needs_reorder = existing_in_expected != existing_in_current
+
     if missing:
         print(f"  Adding missing columns: {', '.join(missing)}")
+
+    if missing and not needs_reorder:
+        # Insert-only path: preserves Google Sheets Table structure.
+        # insertDimension automatically expands any Table whose range is crossed.
+        # Insert left-to-right so each insertion lands at the correct position.
+        for col_name in sorted(missing, key=lambda c: expected_headers.index(c)):
+            col_pos = expected_headers.index(col_name) + 1  # 1-indexed
+            ws.insert_cols([[col_name]], col=col_pos)
+            print(f"  Inserted '{col_name}' at column {col_pos} (table-safe).")
+        return expected_headers
+
+    # Clear+rewrite path — needed when column order must change.
+    reordered = [c for c in target_cols if c in current_headers and
+                 current_headers.index(c) != expected_headers.index(c)]
     if reordered:
         print(f"  Reordering columns: {', '.join(reordered)}")
+        print("  Note: reorder requires a full sheet rewrite — verify Table range in Sheets afterward.")
 
     col_index = {h: i for i, h in enumerate(current_headers)}
 

@@ -6,7 +6,8 @@ Telegram bot for on-the-go additions and edits.
 Two entry points:
 
 - **`main.py`** — CLI script; bulk-fills OMDb fields, merges watch list tabs,
-  deduplicates titles, fixes title casing.
+  deduplicates titles, fixes title casing, renumbers integer ranks, sorts
+  star-rated rows.
 - **`bot.py`** — Telegram bot; runs as a persistent background service and
   handles all interactive commands.
 
@@ -16,12 +17,15 @@ Two entry points:
 
 - Fills **Year**, **Director**, **Country**, **Genre**, **IMDB Rating**, and
   **Metascore** via the [OMDb API](https://www.omdbapi.com/)
-- Never touches **Rank**, **Notes**, **Title**, or **Watch Order**
+- Never touches **Rank**, **Notes**, **Title**, **Watch Order**, **Date Added**,
+  or **Last Watched**
 - Supports multiple worksheet tabs in a single spreadsheet
 - Merges category-specific watch list tabs (Weird, Horror, etc.) into one
   unified **Watch List** tab with a **Category** column
 - Deduplicates titles per sheet (keeps noted entries; prompts when both have notes)
 - Chicago-style title case correction with interactive prompts
+- Renumbers integer ranks sequentially based on row order
+- Sorts star-rated rows by rating (descending) then title (alphabetical)
 - `--skip-omdb` flag to run without API calls (normalize, merge, sort only)
 
 ---
@@ -30,23 +34,43 @@ Two entry points:
 
 ### Main list tabs
 
-Columns: `Rank | Title | Year | Director | Country | Genre | IMDB Rating | Metascore | Notes`
+Columns: `Rank | Title | Year | Director | Country | Genre | IMDB Rating | Metascore | Last Watched | Notes`
 
 Default tabs: Movies, Weird Movies, Dudeist Movies, Documentaries,
 Horror/Halloween, TV, Christmas
 
+**Rank column — two zones:**
+
+- **Numbered ranks (1–200)**: stored inside a Google Sheets Table. Rows are
+  renumbered sequentially by `main.py` based on their current row order.
+- **Star ratings**: regular rows below the table, separated by a blank row.
+  Format: `★ ★ ★ ★ ✮` (full stars + optional `✮` half-star, space-separated).
+  Valid values: 5, 4.5, 4, 3.5, 3, 2.5.
+- Sort order: numbered ranks ascending first, then star ratings descending, then
+  alphabetical within the same star value.
+
 ### Watch List tab
 
-Columns: `Watch Order | Title | Year | Director | Country | Genre | IMDB Rating | Metascore | Category | Notes`
+Columns: `Watch Order | Title | Year | Director | Country | Genre | IMDB Rating | Metascore | Category | Date Added | Notes`
 
 A single **Watch List** tab holds everything, with a **Category** column to
 distinguish General / Weird / Dudeist / Horror / Documentary / Christmas entries.
 The CLI will detect and merge separate category-specific watch list tabs
 (e.g. "Weird Watch List") automatically on first run.
 
+**Date Added** is auto-filled (ISO format `YYYY-MM-DD`) when `/addwatch` is used.
+
 ### TV Watch List tab
 
-Same column layout as Watch List, managed separately.
+Same column layout as Watch List (no Category), managed separately.
+
+### History tab
+
+Columns: `Date | Type | Title | Detail`
+
+Auto-created on first rank change or `/watched` event. Logs:
+- **Rank Changed** — title, old rank → new rank
+- **Watched** — title, sheet it was added to
 
 ---
 
@@ -140,9 +164,10 @@ For each tab the script will:
 1. Normalize column order (add missing columns, report reorders)
 2. Deduplicate titles (prompt when both copies have notes)
 3. Check title casing and prompt to accept/reject each suggestion
-4. Fetch OMDb data for rows with empty fields (unless `--skip-omdb`)
-5. Preview all proposed changes and ask `[y/N]` before writing
-6. Sort watch list tabs by Watch Order
+4. For main list tabs: renumber integer ranks and sort star-rated rows
+5. Fetch OMDb data for rows with empty fields (unless `--skip-omdb`)
+6. Preview all proposed changes and ask `[y/N]` before writing
+7. Sort watch list tabs by Watch Order
 
 ---
 
@@ -174,9 +199,10 @@ journalctl --user -u movie-list-bot.service -f
 
 | Command | Description |
 |---|---|
-| `/addwatch <title> [category]` | Add a movie to the Watch List (fetches OMDb data). Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV |
-| `/setorder <title> <number>` | Set Watch Order (watch lists) or Rank (main sheets) |
-| `/watched <title> [| sheet [| note]]` | Remove from Watch List; optionally move to a main sheet with a note |
+| `/addwatch <title> [category]` | Add to Watch List (fetches OMDb data, records Date Added). Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV |
+| `/setorder <title> <rank>` | Set Watch Order or Rank; plain number = numeric rank (`4`), `4stars`/`4.5stars` = star rating. Repositions the row to its sorted position. |
+| `/watched <title> [| sheet [| note [| rank]]]` | Remove from Watch List; optionally move to a main sheet with a note and rank. Falls back to OMDb if movie isn't in the watch list. Stamps Last Watched date. |
+| `/history [n]` | Show last n rank changes and watched events (default 10) |
 | `/note <title> | <note text>` | Add or update the Notes field |
 | `/find <title>` | Substring search across all sheets with full field display |
 | `/omdb <title>` | OMDb lookup without modifying any sheet |

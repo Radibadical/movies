@@ -233,6 +233,57 @@ def _parse_rank_input(s: str) -> tuple[str, str] | None:
     return (s, f"rank #{s}")
 
 
+def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str) -> bool:
+    """Move a row to its correct sorted position after a rank change.
+    Sort order: integer ranks ascending, then star ratings descending + alphabetical.
+    Returns True if the row was moved."""
+    all_values = ws.get_all_values()
+    if not all_values:
+        return False
+
+    headers = all_values[0]
+    col_index = {h: i for i, h in enumerate(headers)}
+    if "Rank" not in col_index:
+        return False
+
+    rank_col = col_index["Rank"]
+    title_col = col_index.get("Title", -1)
+
+    def full_key(rank_val: str, title: str) -> tuple:
+        s = rank_val.strip()
+        if s.isdigit():
+            return (0, int(s), "")
+        full = s.count("★")
+        half = 0.5 if "✮" in s else 0.0
+        if full or half:
+            return (1, -(full + half), title.strip().lower())
+        return (2, 0.0, "")
+
+    new_key = full_key(stored_rank, canonical_title)
+
+    # Find the first row (skipping current) whose sort key >= new_key
+    target_insert = len(all_values) + 1
+    for i, row in enumerate(all_values[1:], start=2):
+        if i == row_num:
+            continue
+        padded = row + [""] * max(0, len(headers) - len(row))
+        r = padded[rank_col].strip()
+        t = padded[title_col].strip() if title_col >= 0 else ""
+        if r and full_key(r, t) >= new_key:
+            target_insert = i
+            break
+
+    # Already in the right place?
+    if target_insert in (row_num, row_num + 1):
+        return False
+
+    row_data = (all_values[row_num - 1] + [""] * max(0, len(headers) - len(all_values[row_num - 1])))[:len(headers)]
+    ws.delete_rows(row_num)
+    adjusted = target_insert - 1 if target_insert > row_num else target_insert
+    ws.insert_row(row_data, adjusted)
+    return True
+
+
 def _append_log(ss, event_type: str, title: str, detail: str) -> None:
     """Append an entry to the History tab. Silently swallows errors."""
     try:
@@ -649,7 +700,8 @@ async def cmd_setorder(update: Update, context: ContextTypes.DEFAULT_TYPE):
             padded = row + [""] * max(0, len(headers) - len(row))
             if padded[col_index["Title"]].strip().lower() == title_lower:
                 old_val = padded[col_index[order_col]].strip()
-                matches.append((ws_name, ws, i, order_col, col_index[order_col], old_val, is_watch))
+                canonical = padded[col_index["Title"]].strip()
+                matches.append((ws_name, ws, i, order_col, col_index[order_col], old_val, is_watch, canonical))
 
     if not matches:
         await update.message.reply_text(f"'{title}' not found in any sheet.")
@@ -657,16 +709,18 @@ async def cmd_setorder(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sheet_value, value_display = parsed_value
     lines = []
-    for ws_name, ws, row_num, order_col, col_idx, old_val, is_watch in matches:
+    for ws_name, ws, row_num, order_col, col_idx, old_val, is_watch, canonical in matches:
         # Watch Order must be an integer; skip star ratings for watch list sheets
         if is_watch and not raw_value.isdigit():
             lines.append(f"✗ {html(ws_name)}: Watch Order must be an integer — skipped.")
             continue
         stored = raw_value if is_watch else sheet_value
         ws.update_cell(row_num, col_idx + 1, stored)
-        lines.append(f"✓ {html(ws_name)}: {order_col} → {html(stored)}")
+        moved = not is_watch and _reposition_by_rank(ws, row_num, stored, canonical)
+        suffix = ", moved to correct row" if moved else ""
+        lines.append(f"✓ {html(ws_name)}: {order_col} → {html(stored)}{html(suffix)}")
         old_display = old_val or "(blank)"
-        _append_log(ss, "Rank Changed", title, f"{ws_name}: {old_display} → {stored}")
+        _append_log(ss, "Rank Changed", canonical, f"{ws_name}: {old_display} → {stored}")
 
     if len(matches) > 1:
         prefix = f"Updated <b>{html(title)}</b>:\n"
@@ -802,6 +856,8 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     new_row[col_index["Notes"]] = note_text
                 if rank_value and "Rank" in col_index:
                     new_row[col_index["Rank"]] = rank_value
+                if "Last Watched" in col_index:
+                    new_row[col_index["Last Watched"]] = datetime.date.today().isoformat()
 
                 # Insert at correct sort position: numbered ranks first, then star ratings desc
                 insert_index = len(all_values) + 1
