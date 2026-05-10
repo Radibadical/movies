@@ -29,11 +29,22 @@ One spreadsheet, multiple tabs managed by `WORKSHEET_NAMES` in `main.py`.
 **Main list tabs** (columns: Rank, Title, Year, Director, Country, Genre, IMDB Rating, Metascore, Notes):
 - Movies, Weird Movies, Dudeist Movies, Documentaries, Horror/Halloween, TV, Christmas
 
-**Watch list tab** (columns: Watch Order, Title, Year, Director, Country, Genre, IMDB Rating, Metascore, Category, Notes):
+**Rank column — two zones per sheet:**
+- **Numbered ranks (1–200)**: stored inside a Google Sheets Table object. Inserting within this range via `insertDimension` automatically expands the table.
+- **Star ratings**: regular rows below the table, separated by a blank row. Format: `★ ★ ★ ★ ✮` (full stars + optional `✮` half-star, space-separated). Valid values: 5, 4.5, 4, 3.5, 3, 2.5.
+- Sort order: numbered ranks ascending first, then star ratings descending.
+- Blank Rank cells (the separator row) are skipped during insertion scans — handled by `if r and _rank_sort_key(r) >= new_key`.
+
+**Watch list tab** (columns: Watch Order, Title, Year, Director, Country, Genre, IMDB Rating, Metascore, Category, Date Added, Notes):
 - Watch List — merged from multiple source tabs, each given a Category value
+- Date Added: ISO date (YYYY-MM-DD) auto-filled by `/addwatch`
 
 **TV watch list** (same columns as Watch List but no Category):
 - TV Watch List
+
+**History log tab** (columns: Date, Type, Title, Detail):
+- History — auto-created on first event; never in WORKSHEET_NAMES (not processed by main.py)
+- Type values: "Rank Changed" (from /setorder), "Watched" (from /watched)
 
 ### Watch list merge
 
@@ -89,9 +100,10 @@ Restart policy: `on-failure` with 10s delay.
 
 | Command | Description |
 |---|---|
-| `/addwatch <title> [category]` | Add to Watch List (fetches OMDb data) |
-| `/setorder <title> <number>` | Set Watch Order or Rank across all sheets |
-| `/watched <title> [| sheet [| note]]` | Remove from Watch List; optionally move to a main sheet with a note |
+| `/addwatch <title> [category]` | Add to Watch List (fetches OMDb data, records Date Added) |
+| `/setorder <title> <rank>` | Set Watch Order or Rank; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
+| `/watched <title> [| sheet [| note [| rank]]]` | Remove from Watch List; rank accepts same format as /setorder; falls back to OMDb if not in watch list |
+| `/history [n]` | Show last n rank changes and watched events (default 10) |
 | `/note <title> | <note text>` | Add/update Notes field |
 | `/find <title>` | Substring search across all sheets, full field display |
 | `/omdb <title>` | OMDb lookup without touching any sheet |

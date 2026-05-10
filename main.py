@@ -49,14 +49,18 @@ OMDB_FIELDS = {
 }
 
 # These columns are never touched regardless of what OMDb returns
-PRESERVE_COLUMNS = {"Rank", "Notes", "Title", "Watch Order"}
+PRESERVE_COLUMNS = {"Rank", "Notes", "Title", "Watch Order", "Date Added"}
 
 # Tabs whose names contain this string are sorted by "Watch Order" after updates
 WATCH_LIST_KEYWORD = "Watch List"
 
 # Canonical column order for each sheet type
 MOVIE_LIST_COLUMNS = ["Rank", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Notes"]
-WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Category", "Notes"]
+WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Category", "Date Added", "Notes"]
+
+# History log tab
+LOG_TAB = "History"
+LOG_COLUMNS = ["Date", "Type", "Title", "Detail"]
 
 # Source watch list tabs → category name in merged sheet
 WATCH_LIST_TABS = {
@@ -338,6 +342,91 @@ def check_title_casing(ws, headers: list[str]) -> list[str]:
     return headers
 
 
+def renumber_ranks(ws, headers: list[str]) -> list[str]:
+    """Reassign integer Rank values sequentially (1, 2, 3 …) based on current row order.
+    Only touches rows whose Rank is already an integer; star-rated and blank rows are skipped."""
+    if "Rank" not in headers:
+        return headers
+
+    all_values = ws.get_all_values()
+    if len(all_values) < 2:
+        return headers
+
+    col_index = {h: i for i, h in enumerate(headers)}
+    rank_col = col_index["Rank"]
+    updates = []
+    counter = 1
+
+    for i, row in enumerate(all_values[1:], start=2):
+        padded = row + [""] * max(0, len(headers) - len(row))
+        rank_val = padded[rank_col].strip()
+        if not rank_val.isdigit():
+            continue
+        expected = str(counter)
+        if rank_val != expected:
+            updates.append(gspread.Cell(row=i, col=rank_col + 1, value=expected))
+        counter += 1
+
+    if updates:
+        ws.update_cells(updates)
+        print(f"  Renumbered {len(updates)} rank(s) ({counter - 1} total integer-ranked rows).")
+    else:
+        print(f"  Ranks already sequential ({counter - 1} rows) — no changes needed.")
+
+    return headers
+
+
+def sort_star_rated_rows(ws, headers: list[str]) -> list[str]:
+    """Sort star-rated rows (those with ★/✮ in Rank) by star value descending, then title asc.
+    Integer-ranked rows and blank rows are left in place."""
+    if "Rank" not in headers or "Title" not in headers:
+        return headers
+
+    all_values = ws.get_all_values()
+    if len(all_values) < 2:
+        return headers
+
+    col_index = {h: i for i, h in enumerate(headers)}
+    rank_col = col_index["Rank"]
+    title_col = col_index["Title"]
+
+    star_indices = []
+    for i, row in enumerate(all_values[1:]):
+        padded = row + [""] * max(0, len(headers) - len(row))
+        r = padded[rank_col]
+        if "★" in r or "✮" in r:
+            star_indices.append(i)
+
+    if not star_indices:
+        print("  No star-rated rows found.")
+        return headers
+
+    original = [all_values[1:][i] for i in star_indices]
+
+    def sort_key(row):
+        padded = row + [""] * max(0, len(headers) - len(row))
+        r = padded[rank_col]
+        star_val = r.count("★") + (0.5 if "✮" in r else 0.0)
+        return (-star_val, padded[title_col].strip().lower())
+
+    reordered = sorted(original, key=sort_key)
+
+    if reordered == original:
+        print(f"  Star-rated rows already sorted — no changes needed.")
+        return headers
+
+    updates = []
+    for list_pos, data_row_idx in enumerate(star_indices):
+        sheet_row = data_row_idx + 2  # +1 for 0-based, +1 for header
+        padded = reordered[list_pos] + [""] * max(0, len(headers) - len(reordered[list_pos]))
+        for col_idx in range(len(headers)):
+            updates.append(gspread.Cell(row=sheet_row, col=col_idx + 1, value=padded[col_idx]))
+
+    ws.update_cells(updates)
+    print(f"  Sorted {len(star_indices)} star-rated rows by rating then title.")
+    return headers
+
+
 def sort_by_watch_order(ws, headers: list[str], num_rows: int):
     """Sort the worksheet (excluding header) by the Watch Order column ascending."""
     if "Watch Order" not in headers:
@@ -598,6 +687,9 @@ def main():
         headers = normalize_columns(ws, target_cols)
         dedup_titles(ws, headers)
         check_title_casing(ws, headers)
+        if not is_watch_list:
+            renumber_ranks(ws, headers)
+            sort_star_rated_rows(ws, headers)
 
         if args.skip_omdb:
             if is_watch_list:
