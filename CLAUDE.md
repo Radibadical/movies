@@ -69,7 +69,7 @@ existing Category values are preserved (not overwritten with "General").
 ## Running main.py
 
 ```bash
-cd /home/jakedog/ghq/github.com/Radibadical/Movie_List_Maintainer
+cd /home/jakedog/ghq/github.com/Radibadical/movies
 source .venv/bin/activate
 python main.py              # full run with OMDb API calls
 python main.py --skip-omdb  # normalize/merge/sort only, no API calls
@@ -306,7 +306,7 @@ The page splits Movies into three sections via a tab nav:
 | ★ Rated | `#starred` | Rows with `★`/`✮` in Rank |
 
 The hash is written to the URL on tab switch, so links like
-`/Movie_List_Maintainer/#starred` deep-link to a specific section.
+`/movies/#starred` deep-link to a specific section.
 
 All data is fetched once and filtered client-side — switching tabs makes no
 additional network requests.
