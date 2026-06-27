@@ -265,54 +265,78 @@
 <body>
 
 <header>
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 76"
-       style="display:block;max-width:560px;width:100%"
+  <!-- Marquee: 520×96, dots on 26px grid (x: 13…507, y: 9,35,61,87) -->
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 96"
+       style="display:block;max-width:520px;width:100%"
        role="img" aria-label="Jakedog81's Top 200 Movies">
-    <defs>
-      <linearGradient id="uline" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%"   stop-color="#d4a017" stop-opacity="0"/>
-        <stop offset="25%"  stop-color="#d4a017"/>
-        <stop offset="75%"  stop-color="#d4a017"/>
-        <stop offset="100%" stop-color="#d4a017" stop-opacity="0"/>
-      </linearGradient>
-    </defs>
 
-    <!-- Film strip: left -->
-    <rect x="0" y="0" width="46" height="76" fill="#161b22" rx="2"/>
-    <rect x="7"  y="7"  width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="7"  y="24" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="7"  y="41" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="7"  y="58" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="26" y="7"  width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="26" y="24" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="26" y="41" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="26" y="58" width="13" height="9" rx="2" fill="#0d1117"/>
+    <rect x="0" y="0" width="520" height="96" fill="#0d1117" rx="5"/>
+    <!-- subtle inner frame -->
+    <rect x="20" y="20" width="480" height="56" fill="none" stroke="#d4a017" stroke-width="0.75" stroke-opacity="0.25" rx="2"/>
 
-    <!-- Film strip: right -->
-    <rect x="514" y="0" width="46" height="76" fill="#161b22" rx="2"/>
-    <rect x="521" y="7"  width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="521" y="24" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="521" y="41" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="521" y="58" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="540" y="7"  width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="540" y="24" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="540" y="41" width="13" height="9" rx="2" fill="#0d1117"/>
-    <rect x="540" y="58" width="13" height="9" rx="2" fill="#0d1117"/>
+    <!-- Top dots (y=9) -->
+    <circle r="3.5" fill="#d4a017" cx="13"  cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="39"  cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="65"  cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="91"  cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="117" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="143" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="169" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="195" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="221" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="247" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="273" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="299" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="325" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="351" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="377" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="403" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="429" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="455" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="481" cy="9"/>
+    <circle r="3.5" fill="#d4a017" cx="507" cy="9"/>
+
+    <!-- Bottom dots (y=87) -->
+    <circle r="3.5" fill="#d4a017" cx="13"  cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="39"  cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="65"  cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="91"  cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="117" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="143" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="169" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="195" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="221" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="247" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="273" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="299" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="325" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="351" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="377" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="403" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="429" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="455" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="481" cy="87"/>
+    <circle r="3.5" fill="#d4a017" cx="507" cy="87"/>
+
+    <!-- Left dots (x=13, inner rows) -->
+    <circle r="3.5" fill="#d4a017" cx="13" cy="35"/>
+    <circle r="3.5" fill="#d4a017" cx="13" cy="61"/>
+
+    <!-- Right dots (x=507, inner rows) -->
+    <circle r="3.5" fill="#d4a017" cx="507" cy="35"/>
+    <circle r="3.5" fill="#d4a017" cx="507" cy="61"/>
 
     <!-- Byline -->
-    <text x="280" y="27"
+    <text x="260" y="41"
           text-anchor="middle"
           font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
           font-size="16" font-weight="600" fill="#d4a017" letter-spacing="5">JAKEDOG81&#x2019;S</text>
 
     <!-- Main title -->
-    <text x="280" y="57"
+    <text x="260" y="72"
           text-anchor="middle"
           font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
           font-size="26" font-weight="700" fill="#e6edf3" letter-spacing="1">TOP 200 MOVIES</text>
-
-    <!-- Gold rule -->
-    <rect x="70" y="65" width="420" height="1.5" fill="url(#uline)" rx="1"/>
   </svg>
 </header>
 
