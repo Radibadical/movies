@@ -336,6 +336,12 @@ function isStarRank(val) {
   return val.includes('★') || val.includes('✮');
 }
 
+function starLabel(val) {
+  const full = (val.match(/★/g) || []).length;
+  const half = val.includes('✮');
+  return half ? `${full}½ Stars` : `${full} Stars`;
+}
+
 function getFiltered(rows, idx, displayCols, notesIdx) {
   const pageFilter = PAGES[activePage];
   const q = query.toLowerCase();
@@ -384,7 +390,7 @@ function buildTable({ cols, rows }) {
       switch (c) {
         case 'Rank':
           return isStarRank(val)
-            ? `<td class="col-rank stars">${esc(val)}</td>`
+            ? `<td class="col-rank stars" title="${starLabel(val)}">${esc(val)}</td>`
             : `<td class="col-rank">${esc(val)}</td>`;
         case 'Title':        return `<td class="col-title">${esc(val)}</td>`;
         case 'Year':         return `<td class="col-year">${esc(val)}</td>`;
@@ -431,11 +437,12 @@ function buildCards({ cols, rows }) {
     const note  = notesIdx !== undefined ? (row[notesIdx] || '') : '';
 
     const rankClass = isStarRank(rank) ? 'card-rank stars' : 'card-rank';
+    const rankTitle = isStarRank(rank) ? ` title="${starLabel(rank)}"` : '';
     const secondary = [year, dir].filter(Boolean).join(' · ');
 
     html += `<div class="card">
       <div class="card-header">
-        <div class="${rankClass}">${esc(rank)}</div>
+        <div class="${rankClass}"${rankTitle}>${esc(rank)}</div>
         <div class="card-body">
           <div class="card-title">${esc(title)}</div>
           ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
