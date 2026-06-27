@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Movie List</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid #21262d;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      padding: 0 2rem;
+      border-bottom: 1px solid #21262d;
+      overflow-x: auto;
+      scrollbar-width: none;
+      gap: 0.25rem;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+
+    .tab {
+      padding: 0.75rem 0.875rem;
+      cursor: pointer;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: none;
+      color: #8b949e;
+      font-size: 0.8125rem;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+      margin-bottom: -1px;
+    }
+    .tab:hover { color: #e6edf3; }
+    .tab.active { color: #e6edf3; border-bottom-color: #58a6ff; font-weight: 500; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      padding: 0.875rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .search {
+      width: 280px;
+      padding: 0.4375rem 0.75rem;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      font-size: 0.8125rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search:focus { border-color: #58a6ff; }
+    .search::placeholder { color: #484f58; }
+
+    .count { font-size: 0.75rem; color: #484f58; }
+
+    /* ── Table ── */
+    .table-wrap {
+      padding: 0 2rem 3rem;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+
+    thead th {
+      padding: 0.5rem 0.875rem;
+      text-align: left;
+      font-weight: 500;
+      font-size: 0.75rem;
+      color: #8b949e;
+      border-bottom: 1px solid #21262d;
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      position: sticky;
+      top: 0;
+      background: #0d1117;
+    }
+
+    tbody tr { border-bottom: 1px solid #161b22; }
+    tbody tr:hover { background: #161b22; }
+
+    td {
+      padding: 0.5625rem 0.875rem;
+      vertical-align: middle;
+    }
+
+    /* ── Cell types ── */
+    .col-rank {
+      font-weight: 600;
+      color: #8b949e;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .col-rank.stars { color: #d4a017; }
+
+    .col-title { font-weight: 500; color: #e6edf3; }
+
+    .col-year, .col-country, .col-date {
+      color: #8b949e;
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .col-director { color: #c9d1d9; }
+
+    .col-genre { color: #8b949e; font-size: 0.75rem; max-width: 160px; }
+
+    .col-imdb { color: #d4a017; white-space: nowrap; }
+
+    .col-meta { color: #8b949e; }
+
+    .col-watched { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
+
+    .col-notes { color: #6e7681; font-style: italic; max-width: 260px; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.125rem 0.5rem;
+      border-radius: 2em;
+      font-size: 0.7rem;
+      background: #21262d;
+      color: #8b949e;
+      white-space: nowrap;
+    }
+
+    /* ── States ── */
+    .loading, .empty {
+      padding: 4rem 2rem;
+      text-align: center;
+      color: #484f58;
+      font-size: 0.875rem;
+    }
+
+    .spinner {
+      width: 1.25rem;
+      height: 1.25rem;
+      border: 2px solid #21262d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 0.75rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 600px) {
+      header, .toolbar, .table-wrap { padding-left: 1rem; padding-right: 1rem; }
+      .tabs { padding: 0 1rem; }
+      .search { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Movie List</h1>
+</header>
+
+<nav class="tabs" id="tabs"></nav>
+
+<div class="toolbar">
+  <input class="search" id="search" type="search" placeholder="Search…" autocomplete="off">
+  <span class="count" id="count"></span>
+</div>
+
+<div id="content"></div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+// 1. Share your Google Sheet: File → Share → "Anyone with the link" → Viewer
+// 2. Copy the spreadsheet ID from the URL:
+//    https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit
+const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE';
+
+const SHEETS = [
+  'Movies',
+  'Weird Movies',
+  'Dudeist Movies',
+  'Documentaries',
+  'Horror/Halloween',
+  'TV',
+  'Christmas',
+  'Watch List',
+  'TV Watch List',
+];
+
+// Columns to show, in order, for each sheet type
+const MAIN_COLS = [
+  'Rank', 'Title', 'Year', 'Director', 'Country',
+  'Genre', 'IMDB Rating', 'Metascore', 'Last Watched', 'Notes',
+];
+const WATCH_COLS = [
+  'Watch Order', 'Title', 'Year', 'Director', 'Country',
+  'Genre', 'IMDB Rating', 'Metascore', 'Category', 'Date Added', 'Notes',
+];
+
+// ── State ────────────────────────────────────────────────────────────────────
+let activeSheet = SHEETS[0];
+let cache = {};
+let query = '';
+
+// ── Data fetching ─────────────────────────────────────────────────────────────
+async function fetchSheet(name) {
+  if (cache[name]) return cache[name];
+
+  const url =
+    `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}` +
+    `/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(name)}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+
+  // Strip JSONP wrapper: /*O_o*/\ngoogle.visualization.Query.setResponse({...});
+  const json = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+
+  if (json.status === 'error') {
+    const msg = (json.errors || []).map(e => e.detailed_message || e.message).join('; ');
+    throw new Error(msg || 'Sheet not found or not publicly shared');
+  }
+
+  const cols = json.table.cols.map(c => c.label || '');
+  const rows = (json.table.rows || []).map(r =>
+    (r.c || []).map(c => (c && c.v != null) ? String(c.v) : '')
+  );
+
+  cache[name] = { cols, rows };
+  return cache[name];
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function isWatchList(name) {
+  return name.toLowerCase().includes('watch');
+}
+
+function isStarRank(val) {
+  return val.includes('★') || val.includes('✮');
+}
+
+function renderCell(col, val) {
+  if (!val) return '<td></td>';
+
+  switch (col) {
+    case 'Rank':
+    case 'Watch Order':
+      return isStarRank(val)
+        ? `<td class="col-rank stars">${esc(val)}</td>`
+        : `<td class="col-rank">${esc(val)}</td>`;
+    case 'Title':
+      return `<td class="col-title">${esc(val)}</td>`;
+    case 'Year':
+      return `<td class="col-year">${esc(val)}</td>`;
+    case 'Director':
+      return `<td class="col-director">${esc(val)}</td>`;
+    case 'Country':
+      return `<td class="col-country">${esc(val)}</td>`;
+    case 'Genre':
+      return `<td class="col-genre">${esc(val)}</td>`;
+    case 'IMDB Rating':
+      return `<td class="col-imdb">★ ${esc(val)}</td>`;
+    case 'Metascore':
+      return `<td class="col-meta">${esc(val)}</td>`;
+    case 'Last Watched':
+    case 'Date Added':
+      return `<td class="col-date">${esc(val)}</td>`;
+    case 'Notes':
+      return `<td class="col-notes">${esc(val)}</td>`;
+    case 'Category':
+      return `<td><span class="badge">${esc(val)}</span></td>`;
+    default:
+      return `<td>${esc(val)}</td>`;
+  }
+}
+
+function renderTable(data, sheetName) {
+  const { cols, rows } = data;
+
+  // Map column name → index in the raw row array
+  const idx = {};
+  cols.forEach((c, i) => { if (c) idx[c] = i; });
+
+  const displayCols = (isWatchList(sheetName) ? WATCH_COLS : MAIN_COLS)
+    .filter(c => c in idx);
+
+  // Filter by search query across all displayed columns
+  const q = query.toLowerCase();
+  const filtered = rows.filter(row => {
+    const title = row[idx['Title']] || '';
+    if (!title.trim()) return false; // skip blank rows (separators, etc.)
+    if (!q) return true;
+    return displayCols.some(c => (row[idx[c]] || '').toLowerCase().includes(q));
+  });
+
+  document.getElementById('count').textContent =
+    filtered.length ? `${filtered.length} title${filtered.length !== 1 ? 's' : ''}` : '';
+
+  if (!filtered.length) {
+    document.getElementById('content').innerHTML =
+      `<div class="empty">No results${q ? ` for "<b>${esc(q)}</b>"` : ''}.</div>`;
+    return;
+  }
+
+  const head = displayCols.map(c => `<th>${esc(c)}</th>`).join('');
+  const body = filtered.map(row =>
+    `<tr>${displayCols.map(c => renderCell(c, row[idx[c]] || '')).join('')}</tr>`
+  ).join('');
+
+  document.getElementById('content').innerHTML =
+    `<div class="table-wrap"><table>` +
+    `<thead><tr>${head}</tr></thead>` +
+    `<tbody>${body}</tbody>` +
+    `</table></div>`;
+}
+
+// ── Sheet switching ───────────────────────────────────────────────────────────
+async function showSheet(name) {
+  activeSheet = name;
+
+  document.querySelectorAll('.tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.sheet === name)
+  );
+
+  document.getElementById('content').innerHTML =
+    `<div class="loading"><div class="spinner"></div>Loading…</div>`;
+  document.getElementById('count').textContent = '';
+
+  try {
+    const data = await fetchSheet(name);
+    renderTable(data, name);
+  } catch (err) {
+    document.getElementById('content').innerHTML =
+      `<div class="empty">${esc(err.message)}</div>`;
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+const tabsEl = document.getElementById('tabs');
+SHEETS.forEach(name => {
+  const btn = document.createElement('button');
+  btn.className = 'tab';
+  btn.textContent = name;
+  btn.dataset.sheet = name;
+  btn.onclick = () => showSheet(name);
+  tabsEl.appendChild(btn);
+});
+
+document.getElementById('search').addEventListener('input', e => {
+  query = e.target.value;
+  if (cache[activeSheet]) renderTable(cache[activeSheet], activeSheet);
+});
+
+showSheet(SHEETS[0]);
+</script>
+</body>
+</html>
