@@ -21,6 +21,29 @@
 
     header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; }
 
+    /* ── Page nav ── */
+    .page-nav {
+      display: flex;
+      padding: 0 2rem;
+      border-bottom: 1px solid #21262d;
+      gap: 0.25rem;
+    }
+
+    .page-tab {
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: none;
+      color: #8b949e;
+      font-size: 0.8125rem;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+      margin-bottom: -1px;
+    }
+    .page-tab:hover { color: #e6edf3; }
+    .page-tab.active { color: #e6edf3; border-bottom-color: #58a6ff; font-weight: 500; }
+
     /* ── Toolbar ── */
     .toolbar {
       padding: 0.875rem 2rem;
@@ -109,15 +132,6 @@
     tbody tr.main-row:hover + tr.notes-row td { background: #161b22; }
     tbody tr.notes-row td { padding-top: 0; padding-bottom: 0.625rem; }
 
-    tr.star-divider td {
-      padding: 0.75rem 0.75rem 0.5rem;
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #484f58;
-      border-top: 1px solid #21262d;
-    }
-
     td { padding: 0.5625rem 0.75rem; vertical-align: top; }
 
     .col-rank {
@@ -129,18 +143,18 @@
       padding-top: 0.625rem;
     }
     .col-rank.stars { color: #d4a017; font-size: 0.8125rem; }
-    .col-title { font-weight: 500; color: #e6edf3; }
-    .col-year { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
+    .col-title    { font-weight: 500; color: #e6edf3; }
+    .col-year     { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
     .col-director { color: #c9d1d9; }
-    .col-country {
+    .col-country  {
       color: #8b949e; font-size: 0.75rem;
       max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .col-genre { color: #8b949e; font-size: 0.75rem; }
-    .col-imdb { color: #d4a017; white-space: nowrap; }
-    .col-meta { color: #8b949e; }
+    .col-genre   { color: #8b949e; font-size: 0.75rem; }
+    .col-imdb    { color: #d4a017; white-space: nowrap; }
+    .col-meta    { color: #8b949e; }
     .col-watched { color: #484f58; font-size: 0.75rem; white-space: nowrap; }
-    .col-notes {
+    .col-notes   {
       color: #8b949e; font-style: italic; line-height: 1.55;
       padding-left: 3.5rem;
     }
@@ -220,14 +234,6 @@
       line-height: 1.6;
     }
 
-    .card-section-label {
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #484f58;
-      padding: 0.75rem 0 0.25rem;
-    }
-
     /* ── Responsive breakpoint ── */
     @media (min-width: 700px) {
       .cards { display: none; }
@@ -235,7 +241,7 @@
 
     @media (max-width: 699px) {
       .table-wrap { display: none; }
-      header, .toolbar { padding-left: 1rem; padding-right: 1rem; }
+      header, .toolbar, .page-nav { padding-left: 1rem; padding-right: 1rem; }
       .search { width: 100%; }
     }
   </style>
@@ -245,6 +251,12 @@
 <header>
   <h1>Jake's Top 200 Movies</h1>
 </header>
+
+<nav class="page-nav">
+  <button class="page-tab" data-page="top100">1–100</button>
+  <button class="page-tab" data-page="top200">101–200</button>
+  <button class="page-tab" data-page="starred">★ Rated</button>
+</nav>
 
 <div class="toolbar">
   <input class="search" id="search" type="search" placeholder="Search…" autocomplete="off">
@@ -262,9 +274,16 @@ const TABLE_COLS = [
   'Genre', 'IMDB Rating', 'Metascore', 'Last Watched',
 ];
 
+const PAGES = {
+  top100:  r => { const n = parseInt(r, 10); return Number.isInteger(n) && n >= 1   && n <= 100; },
+  top200:  r => { const n = parseInt(r, 10); return Number.isInteger(n) && n >= 101 && n <= 200; },
+  starred: r => r.includes('★') || r.includes('✮'),
+};
+
 // ── State ────────────────────────────────────────────────────────────────────
-let cache = null;
-let query = '';
+let cache      = null;
+let query      = '';
+let activePage = 'top100';
 
 // ── CSV parser ───────────────────────────────────────────────────────────────
 function parseCSV(text) {
@@ -317,11 +336,14 @@ function isStarRank(val) {
   return val.includes('★') || val.includes('✮');
 }
 
-function filterRows(rows, idx, displayCols, notesIdx) {
+function getFiltered(rows, idx, displayCols, notesIdx) {
+  const pageFilter = PAGES[activePage];
   const q = query.toLowerCase();
   return rows.filter(row => {
     const title = row[idx['Title']] || '';
     if (!title.trim()) return false;
+    const rank = row[idx['Rank']] || '';
+    if (!pageFilter(rank)) return false;
     if (!q) return true;
     const note = notesIdx !== undefined ? (row[notesIdx] || '') : '';
     return displayCols.some(c => (row[idx[c]] || '').toLowerCase().includes(q))
@@ -330,14 +352,14 @@ function filterRows(rows, idx, displayCols, notesIdx) {
 }
 
 // ── Desktop table ─────────────────────────────────────────────────────────────
-function renderTable({ cols, rows }) {
+function buildTable({ cols, rows }) {
   const idx = {};
   cols.forEach((c, i) => { if (c) idx[c] = i; });
 
   const displayCols = TABLE_COLS.filter(c => c in idx);
-  const notesIdx = idx['Notes'];
-  const colCount = displayCols.length;
-  const filtered = filterRows(rows, idx, displayCols, notesIdx);
+  const notesIdx    = idx['Notes'];
+  const colCount    = displayCols.length;
+  const filtered    = getFiltered(rows, idx, displayCols, notesIdx);
 
   document.getElementById('count').textContent =
     filtered.length ? `${filtered.length} title${filtered.length !== 1 ? 's' : ''}` : '';
@@ -353,18 +375,9 @@ function renderTable({ cols, rows }) {
   };
   const head = displayCols.map(c => `<th class="${thClass[c] || ''}">${esc(c)}</th>`).join('');
 
-  let inStarSection = false;
   let body = '';
-
   for (const row of filtered) {
-    const rank = row[idx['Rank']] || '';
     const note = notesIdx !== undefined ? (row[notesIdx] || '') : '';
-
-    if (!inStarSection && isStarRank(rank)) {
-      inStarSection = true;
-      body += `<tr class="star-divider"><td colspan="${colCount}">Star ratings</td></tr>`;
-    }
-
     const tds = displayCols.map(c => {
       const val = row[idx[c]] || '';
       switch (c) {
@@ -372,15 +385,15 @@ function renderTable({ cols, rows }) {
           return isStarRank(val)
             ? `<td class="col-rank stars">${esc(val)}</td>`
             : `<td class="col-rank">${esc(val)}</td>`;
-        case 'Title':       return `<td class="col-title">${esc(val)}</td>`;
-        case 'Year':        return `<td class="col-year">${esc(val)}</td>`;
-        case 'Director':    return `<td class="col-director">${esc(val)}</td>`;
-        case 'Country':     return val ? `<td class="col-country" title="${esc(val)}">${esc(val)}</td>` : '<td></td>';
-        case 'Genre':       return `<td class="col-genre">${esc(val)}</td>`;
-        case 'IMDB Rating': return val ? `<td class="col-imdb">★ ${esc(val)}</td>` : '<td></td>';
-        case 'Metascore':   return `<td class="col-meta">${esc(val)}</td>`;
-        case 'Last Watched':return val ? `<td class="col-watched">${esc(val)}</td>` : '<td></td>';
-        default:            return `<td>${esc(val)}</td>`;
+        case 'Title':        return `<td class="col-title">${esc(val)}</td>`;
+        case 'Year':         return `<td class="col-year">${esc(val)}</td>`;
+        case 'Director':     return `<td class="col-director">${esc(val)}</td>`;
+        case 'Country':      return val ? `<td class="col-country" title="${esc(val)}">${esc(val)}</td>` : '<td></td>';
+        case 'Genre':        return `<td class="col-genre">${esc(val)}</td>`;
+        case 'IMDB Rating':  return val ? `<td class="col-imdb">★ ${esc(val)}</td>` : '<td></td>';
+        case 'Metascore':    return `<td class="col-meta">${esc(val)}</td>`;
+        case 'Last Watched': return val ? `<td class="col-watched">${esc(val)}</td>` : '<td></td>';
+        default:             return `<td>${esc(val)}</td>`;
       }
     }).join('');
 
@@ -396,32 +409,25 @@ function renderTable({ cols, rows }) {
 }
 
 // ── Mobile cards ──────────────────────────────────────────────────────────────
-function renderCards({ cols, rows }) {
+function buildCards({ cols, rows }) {
   const idx = {};
   cols.forEach((c, i) => { if (c) idx[c] = i; });
 
   const displayCols = TABLE_COLS.filter(c => c in idx);
-  const notesIdx = idx['Notes'];
-  const filtered = filterRows(rows, idx, displayCols, notesIdx);
+  const notesIdx    = idx['Notes'];
+  const filtered    = getFiltered(rows, idx, displayCols, notesIdx);
 
-  if (!filtered.length) return null; // count already set by renderTable
+  if (!filtered.length) return '';
 
-  let inStarSection = false;
   let html = '<div class="cards">';
-
   for (const row of filtered) {
-    const rank    = row[idx['Rank']]        || '';
-    const title   = row[idx['Title']]       || '';
-    const year    = row[idx['Year']]        || '';
-    const dir     = row[idx['Director']]    || '';
-    const genre   = row[idx['Genre']]       || '';
-    const imdb    = row[idx['IMDB Rating']] || '';
-    const note    = notesIdx !== undefined ? (row[notesIdx] || '') : '';
-
-    if (!inStarSection && isStarRank(rank)) {
-      inStarSection = true;
-      html += `<div class="card-section-label">Star ratings</div>`;
-    }
+    const rank  = row[idx['Rank']]        || '';
+    const title = row[idx['Title']]       || '';
+    const year  = row[idx['Year']]        || '';
+    const dir   = row[idx['Director']]    || '';
+    const genre = row[idx['Genre']]       || '';
+    const imdb  = row[idx['IMDB Rating']] || '';
+    const note  = notesIdx !== undefined ? (row[notesIdx] || '') : '';
 
     const rankClass = isStarRank(rank) ? 'card-rank stars' : 'card-rank';
     const secondary = [year, dir].filter(Boolean).join(' · ');
@@ -439,16 +445,23 @@ function renderCards({ cols, rows }) {
       ${note ? `<div class="card-review">${esc(note)}</div>` : ''}
     </div>`;
   }
-
   html += '</div>';
   return html;
 }
 
-// ── Render both (CSS hides the right one per breakpoint) ─────────────────────
+// ── Render ────────────────────────────────────────────────────────────────────
 function render(data) {
-  const tableHtml = renderTable(data);
-  const cardsHtml = renderCards(data);
-  document.getElementById('content').innerHTML = tableHtml + (cardsHtml || '');
+  document.getElementById('content').innerHTML = buildTable(data) + buildCards(data);
+}
+
+// ── Page switching ────────────────────────────────────────────────────────────
+function setPage(pageId) {
+  activePage = pageId;
+  location.hash = pageId;
+  document.querySelectorAll('.page-tab').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.page === pageId)
+  );
+  if (cache) render(cache);
 }
 
 // ── Load ─────────────────────────────────────────────────────────────────────
@@ -464,10 +477,18 @@ async function load() {
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.page-tab').forEach(btn =>
+  btn.addEventListener('click', () => setPage(btn.dataset.page))
+);
+
 document.getElementById('search').addEventListener('input', e => {
   query = e.target.value;
   if (cache) render(cache);
 });
+
+// Restore page from URL hash if present
+const initialPage = location.hash.slice(1);
+setPage(PAGES[initialPage] ? initialPage : 'top100');
 
 load();
 </script>
