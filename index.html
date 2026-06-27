@@ -343,7 +343,8 @@ function getFiltered(rows, idx, displayCols, notesIdx) {
     const title = row[idx['Title']] || '';
     if (!title.trim()) return false;
     const rank = row[idx['Rank']] || '';
-    if (!pageFilter(rank)) return false;
+    // When searching, show results from all pages
+    if (!q && !pageFilter(rank)) return false;
     if (!q) return true;
     const note = notesIdx !== undefined ? (row[notesIdx] || '') : '';
     return displayCols.some(c => (row[idx[c]] || '').toLowerCase().includes(q))
