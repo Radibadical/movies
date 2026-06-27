@@ -113,16 +113,38 @@ Restart policy: `on-failure` with 10s delay.
 | `/addwatch <title> [category]` | Add to Watch List (fetches OMDb data, records Date Added) |
 | `/setorder <title> <rank>` | Set Watch Order or Rank; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
 | `/watched <title> [| sheet [| note [| rank]]]` | Remove from Watch List; rank accepts same format as /setorder; falls back to OMDb if not in watch list; stamps Last Watched |
-| `/history [n]` | Show last n rank changes and watched events (default 10) |
+| `/history [n]` | Show last n rank changes and watched events (default 10, max 50) |
 | `/note <title> | <note text>` | Add/update Notes field |
-| `/find <title>` | Substring search across all sheets, full field display |
+| `/find <query>` | Search every tab and every column in the spreadsheet (not just Title) |
 | `/omdb <title>` | OMDb lookup without touching any sheet |
 | `/watchlist [category]` | Show Watch List, optionally filtered by category |
 | `/ranked <start> <end> [category]` | Show rank/watch-order range, grouped by sheet; optional category filter |
+| `/random [genre]` | Suggest a random movie from the Watch List; optional genre substring filter |
 | `/help` | Show help message |
 
 Categories for `/watchlist` and `/ranked`: General, Weird, Dudeist, Horror,
 Documentary, Christmas, TV.
+
+### `/find` behaviour
+Searches every worksheet in the spreadsheet (including History) via `ss.worksheets()`,
+not just `WORKSHEET_NAMES`. Matches any cell in each row, not just the Title column.
+Non-standard columns (e.g. History's Date/Type/Detail) are displayed at the bottom of
+each result block.
+
+### `/random` behaviour
+Draws only from the "Watch List" tab (not TV Watch List or other sheets). Genre argument
+is a case-insensitive substring match against the Genre column (e.g. `horror` matches
+"Horror, Thriller").
+
+### `/history` filtering
+Watch list rank changes (Watch Order updates) are excluded. Only "Rank Changed" events
+where the sheet name does not contain `WATCH_LIST_KEYWORD` and the new rank is a plain
+integer 1–200 are shown.
+
+### `/addwatch` table insertion
+Uses `insert_at = max(2, len(all_values))` to insert within the Google Sheets Table
+range rather than one row past the end. Inserting within the table range triggers
+`insertDimension`, which auto-expands the table boundary.
 
 ## Key implementation details
 
@@ -231,3 +253,55 @@ Install: `pip install -r requirements.txt` (inside `.venv`).
 
 Sensitive files already ignored: `.env`, `credentials.json`, `__pycache__/`,
 `*.pyc`, `.venv/`, `*-context.txt`.
+
+## Web UI
+
+**Branch:** `feature/web-ui`
+**File:** `index.html` (repo root on that branch)
+**Live URL:** https://radibadical.github.io/Movie_List_Maintainer/
+
+A single-file static page deployed via GitHub Pages. No backend — reads directly
+from Google Sheets. The repo must be public for GitHub Pages to work on the free plan.
+
+### How it works
+
+Fetches the Movies sheet via the Google Sheets CSV export endpoint:
+```
+https://docs.google.com/spreadsheets/d/{ID}/export?format=csv&sheet=Movies
+```
+
+The `gviz/tq` JSON endpoint was tried first but does not work with Google Sheets
+Table objects — it concatenates all cell values into the column label field and
+truncates rows. The CSV export has no such issue.
+
+The sheet must be shared as **"Anyone with the link — Viewer"** for the fetch to work.
+This exposes the spreadsheet ID in the source but does not expose your email address
+(the CSV endpoint returns data only, no owner metadata).
+
+### Updating the page
+
+Edit `index.html` on the `feature/web-ui` branch and push. GitHub Pages redeploys
+automatically within ~1 minute.
+
+```bash
+git checkout feature/web-ui
+# edit index.html
+git add index.html && git commit -m "..." && git push
+```
+
+### Adding more sheets
+
+The page currently shows only the Movies tab. To add other sheets:
+1. Add a tab bar back (see git history for the removed tab UI)
+2. Define display columns per sheet type (`MAIN_COLS`, `WATCH_COLS`)
+3. Add sheet names to a `SHEETS` array and call `fetchSheet(name)` per tab
+
+### Branch structure
+
+| Branch | Purpose |
+|---|---|
+| `main` | Bot-only code (`bot.py`, `main.py`) — stable |
+| `feature/web-ui` | Web UI (`index.html`) — also contains all bot code |
+
+To abandon the web UI: delete the `feature/web-ui` branch. `main` is unaffected.
+To merge it in when ready: `git checkout main && git merge feature/web-ui`.
