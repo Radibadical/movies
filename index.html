@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jakedog81's Top 200 Movies</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid #21262d;
+    }
+    .site-title {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+    .title-rule {
+      flex: 1;
+      height: 1px;
+      background: #2d5a8e;
+    }
+    .title-text { text-align: center; flex-shrink: 0; }
+    .title-byline {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #a07820;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+    }
+    .title-main {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #8b949e;
+      letter-spacing: 1px;
+    }
+
+    /* ── Page nav ── */
+    .page-nav {
+      display: flex;
+      padding: 0 2rem;
+      border-bottom: 1px solid #21262d;
+      gap: 0.25rem;
+    }
+
+    .page-tab {
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: none;
+      color: #8b949e;
+      font-size: 0.8125rem;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+      margin-bottom: -1px;
+    }
+    .page-tab:hover { color: #e6edf3; }
+    .page-tab.active { color: #e6edf3; border-bottom-color: #58a6ff; font-weight: 500; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      padding: 0.875rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .search {
+      width: 280px;
+      padding: 0.4375rem 0.75rem;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      font-size: 0.8125rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search:focus { border-color: #58a6ff; }
+    .search::placeholder { color: #484f58; }
+
+    .count { font-size: 0.75rem; color: #484f58; white-space: nowrap; }
+
+    /* ── States ── */
+    .loading, .empty {
+      padding: 4rem 2rem;
+      text-align: center;
+      color: #484f58;
+      font-size: 0.875rem;
+    }
+
+    .spinner {
+      width: 1.25rem;
+      height: 1.25rem;
+      border: 2px solid #21262d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 0.75rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ═══════════════════════════════════════════════
+       DESKTOP TABLE (≥ 700px)
+    ═══════════════════════════════════════════════ */
+    .table-wrap {
+      padding: 0 2rem 3rem;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+
+    thead th {
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      font-weight: 500;
+      font-size: 0.7rem;
+      color: #8b949e;
+      border-bottom: 1px solid #21262d;
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      position: sticky;
+      top: 0;
+      background: #0d1117;
+    }
+
+    .th-rank     { width: 3.5rem; }
+    .th-title    { min-width: 180px; }
+    .th-year     { width: 4rem; }
+    .th-director { width: 150px; }
+    .th-country  { width: 160px; }
+    .th-genre    { width: 150px; }
+    .th-imdb     { width: 72px; }
+    .th-meta     { width: 60px; }
+    .th-watched  { width: 90px; }
+
+    tbody tr.main-row { border-top: 1px solid #161b22; }
+    tbody tr.main-row:hover td,
+    tbody tr.main-row:hover + tr.notes-row td { background: #161b22; }
+    tbody tr.notes-row td { padding-top: 0; padding-bottom: 0.625rem; }
+
+    td { padding: 0.5625rem 0.75rem; vertical-align: top; }
+
+    .col-rank {
+      font-weight: 700;
+      color: #484f58;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      font-size: 0.75rem;
+      padding-top: 0.625rem;
+    }
+    .col-rank.stars { color: #d4a017; font-size: 1rem; }
+    .half-star {
+      display: inline-block;
+      position: relative;
+      color: #484f58;
+    }
+    .half-star::before {
+      content: '★';
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 50%;
+      overflow: hidden;
+      color: #d4a017;
+    }
+    .col-title    { font-weight: 500; color: #e6edf3; }
+    .col-year     { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
+    .col-director { color: #c9d1d9; }
+    .col-country  {
+      color: #8b949e; font-size: 0.75rem;
+      max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .col-genre   { color: #8b949e; font-size: 0.75rem; }
+    .col-imdb    { color: #d4a017; white-space: nowrap; }
+    .col-meta    { color: #8b949e; }
+    .col-watched { color: #484f58; font-size: 0.75rem; white-space: nowrap; }
+    .col-notes   {
+      color: #8b949e; font-style: italic; line-height: 1.55;
+      padding-left: 3.5rem;
+    }
+
+    /* ═══════════════════════════════════════════════
+       MOBILE CARDS (< 700px)
+    ═══════════════════════════════════════════════ */
+    .cards {
+      padding: 0.5rem 1rem 3rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 0.875rem 1rem;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+
+    .card-rank {
+      font-weight: 700;
+      color: #484f58;
+      font-size: 0.8125rem;
+      font-variant-numeric: tabular-nums;
+      min-width: 2rem;
+      padding-top: 0.15rem;
+      flex-shrink: 0;
+    }
+    .card-rank.stars { color: #d4a017; font-size: 0.9375rem; line-height: 1.4; }
+    .card-rank .half-star { font-size: inherit; }
+
+    .card-body { flex: 1; min-width: 0; }
+
+    .card-title {
+      font-weight: 600;
+      color: #e6edf3;
+      font-size: 0.9375rem;
+      line-height: 1.3;
+    }
+
+    .card-secondary {
+      margin-top: 0.3rem;
+      font-size: 0.75rem;
+      color: #8b949e;
+      line-height: 1.4;
+    }
+
+    .card-genre {
+      margin-top: 0.2rem;
+      font-size: 0.7rem;
+      color: #484f58;
+    }
+
+    .card-imdb {
+      color: #d4a017;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+      padding-top: 0.15rem;
+    }
+
+    .card-review {
+      margin-top: 0.75rem;
+      padding-top: 0.625rem;
+      border-top: 1px solid #21262d;
+      font-size: 0.8rem;
+      color: #8b949e;
+      font-style: italic;
+      line-height: 1.6;
+    }
+
+    /* ── Responsive breakpoint ── */
+    @media (min-width: 700px) {
+      .cards { display: none; }
+    }
+
+    @media (max-width: 699px) {
+      .table-wrap { display: none; }
+      header, .toolbar, .page-nav { padding-left: 1rem; padding-right: 1rem; }
+      .search { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="site-title">
+    <span class="title-rule"></span>
+    <div class="title-text">
+      <div class="title-byline">Jakedog81&#x2019;s</div>
+      <div class="title-main">Top 200 Movies</div>
+    </div>
+    <span class="title-rule"></span>
+  </div>
+</header>
+
+<nav class="page-nav">
+  <button class="page-tab" data-page="top100">1–100</button>
+  <button class="page-tab" data-page="top200">101–200</button>
+  <button class="page-tab" data-page="starred">★ Rated</button>
+</nav>
+
+<div class="toolbar">
+  <input class="search" id="search" type="search" placeholder="Search…" autocomplete="off">
+  <span class="count" id="count"></span>
+</div>
+
+<div id="content"></div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────────────────────
+const SPREADSHEET_ID = '12ETUXbIPiwozu_M6Y1Z1hmpsevIbBSxyJQNGbKM-22M';
+
+const TABLE_COLS = [
+  'Rank', 'Title', 'Year', 'Director', 'Country',
+  'Genre', 'IMDB Rating', 'Metascore', 'Last Watched',
+];
+
+const PAGES = {
+  top100:  r => { const n = parseInt(r, 10); return Number.isInteger(n) && n >= 1   && n <= 100; },
+  top200:  r => { const n = parseInt(r, 10); return Number.isInteger(n) && n >= 101 && n <= 200; },
+  starred: r => r.includes('★') || r.includes('✮'),
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let cache      = null;
+let query      = '';
+let activePage = 'top100';
+
+// ── CSV parser ───────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false, i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i += 2; continue; }
+      if (ch === '"') { inQuotes = false; i++; continue; }
+      field += ch;
+    } else {
+      if (ch === '"') { inQuotes = true; i++; continue; }
+      if (ch === ',') { row.push(field); field = ''; i++; continue; }
+      if (ch === '\r' && text[i + 1] === '\n') {
+        row.push(field); rows.push(row); row = []; field = ''; i += 2; continue;
+      }
+      if (ch === '\n') {
+        row.push(field); rows.push(row); row = []; field = ''; i++; continue;
+      }
+      field += ch;
+    }
+    i++;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+async function fetchMovies() {
+  if (cache) return cache;
+  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&sheet=Movies`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} — check the sheet is publicly shared`);
+  const parsed = parseCSV(await res.text());
+  if (!parsed.length) throw new Error('Empty response');
+  const cols = parsed[0].map(c => c.trim());
+  const rows = parsed.slice(1).map(r => r.map(c => c.trim()));
+  cache = { cols, rows };
+  return cache;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function isStarRank(val) {
+  return val.includes('★') || val.includes('✮');
+}
+
+function renderStars(val) {
+  return val.split(' ').map(ch => {
+    if (ch === '★') return '★';
+    if (ch === '✮') return '<span class="half-star">★</span>';
+    return '';
+  }).join(' ');
+}
+
+function starLabel(val) {
+  const full = (val.match(/★/g) || []).length;
+  const half = val.includes('✮');
+  return half ? `${full}½ Stars` : `${full} Stars`;
+}
+
+function getFiltered(rows, idx, displayCols, notesIdx) {
+  const pageFilter = PAGES[activePage];
+  const q = query.toLowerCase();
+  return rows.filter(row => {
+    const title = row[idx['Title']] || '';
+    if (!title.trim()) return false;
+    const rank = row[idx['Rank']] || '';
+    // When searching, show results from all pages
+    if (!q && !pageFilter(rank)) return false;
+    if (!q) return true;
+    const note = notesIdx !== undefined ? (row[notesIdx] || '') : '';
+    return displayCols.some(c => (row[idx[c]] || '').toLowerCase().includes(q))
+      || note.toLowerCase().includes(q);
+  });
+}
+
+// ── Desktop table ─────────────────────────────────────────────────────────────
+function buildTable({ cols, rows }) {
+  const idx = {};
+  cols.forEach((c, i) => { if (c) idx[c] = i; });
+
+  const displayCols = TABLE_COLS.filter(c => c in idx);
+  const notesIdx    = idx['Notes'];
+  const colCount    = displayCols.length;
+  const filtered    = getFiltered(rows, idx, displayCols, notesIdx);
+
+  document.getElementById('count').textContent =
+    filtered.length ? `${filtered.length} title${filtered.length !== 1 ? 's' : ''}` : '';
+
+  if (!filtered.length) {
+    return `<div class="empty">No results${query ? ` for "${esc(query)}"` : ''}.</div>`;
+  }
+
+  const thClass = {
+    'Rank': 'th-rank', 'Title': 'th-title', 'Year': 'th-year',
+    'Director': 'th-director', 'Country': 'th-country', 'Genre': 'th-genre',
+    'IMDB Rating': 'th-imdb', 'Metascore': 'th-meta', 'Last Watched': 'th-watched',
+  };
+  const head = displayCols.map(c => `<th class="${thClass[c] || ''}">${esc(c)}</th>`).join('');
+
+  let body = '';
+  for (const row of filtered) {
+    const note = notesIdx !== undefined ? (row[notesIdx] || '') : '';
+    const tds = displayCols.map(c => {
+      const val = row[idx[c]] || '';
+      switch (c) {
+        case 'Rank':
+          return isStarRank(val)
+            ? `<td class="col-rank stars" title="${starLabel(val)}">${renderStars(val)}</td>`
+            : `<td class="col-rank">${esc(val)}</td>`;
+        case 'Title':        return `<td class="col-title">${esc(val)}</td>`;
+        case 'Year':         return `<td class="col-year">${esc(val)}</td>`;
+        case 'Director':     return `<td class="col-director">${esc(val)}</td>`;
+        case 'Country':      return val ? `<td class="col-country" title="${esc(val)}">${esc(val)}</td>` : '<td></td>';
+        case 'Genre':        return `<td class="col-genre">${esc(val)}</td>`;
+        case 'IMDB Rating':  return val ? `<td class="col-imdb">★ ${esc(val)}</td>` : '<td></td>';
+        case 'Metascore':    return `<td class="col-meta">${esc(val)}</td>`;
+        case 'Last Watched': return val ? `<td class="col-watched">${esc(val)}</td>` : '<td></td>';
+        default:             return `<td>${esc(val)}</td>`;
+      }
+    }).join('');
+
+    body += `<tr class="main-row">${tds}</tr>`;
+    if (note) {
+      body += `<tr class="notes-row"><td></td>` +
+        `<td colspan="${colCount - 1}" class="col-notes">${esc(note)}</td></tr>`;
+    }
+  }
+
+  return `<div class="table-wrap"><table>` +
+    `<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+// ── Mobile cards ──────────────────────────────────────────────────────────────
+function buildCards({ cols, rows }) {
+  const idx = {};
+  cols.forEach((c, i) => { if (c) idx[c] = i; });
+
+  const displayCols = TABLE_COLS.filter(c => c in idx);
+  const notesIdx    = idx['Notes'];
+  const filtered    = getFiltered(rows, idx, displayCols, notesIdx);
+
+  if (!filtered.length) return '';
+
+  let html = '<div class="cards">';
+  for (const row of filtered) {
+    const rank  = row[idx['Rank']]        || '';
+    const title = row[idx['Title']]       || '';
+    const year  = row[idx['Year']]        || '';
+    const dir   = row[idx['Director']]    || '';
+    const genre = row[idx['Genre']]       || '';
+    const imdb  = row[idx['IMDB Rating']] || '';
+    const note  = notesIdx !== undefined ? (row[notesIdx] || '') : '';
+
+    const rankClass = isStarRank(rank) ? 'card-rank stars' : 'card-rank';
+    const rankTitle = isStarRank(rank) ? ` title="${starLabel(rank)}"` : '';
+    const secondary = [year, dir].filter(Boolean).join(' · ');
+
+    html += `<div class="card">
+      <div class="card-header">
+        <div class="${rankClass}"${rankTitle}>${isStarRank(rank) ? renderStars(rank) : esc(rank)}</div>
+        <div class="card-body">
+          <div class="card-title">${esc(title)}</div>
+          ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
+          ${genre    ? `<div class="card-genre">${esc(genre)}</div>` : ''}
+        </div>
+        ${imdb ? `<div class="card-imdb">★ ${esc(imdb)}</div>` : ''}
+      </div>
+      ${note ? `<div class="card-review">${esc(note)}</div>` : ''}
+    </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(data) {
+  document.getElementById('content').innerHTML = buildTable(data) + buildCards(data);
+}
+
+// ── Page switching ────────────────────────────────────────────────────────────
+function setPage(pageId) {
+  activePage = pageId;
+  location.hash = pageId;
+  document.querySelectorAll('.page-tab').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.page === pageId)
+  );
+  if (cache) render(cache);
+}
+
+// ── Load ─────────────────────────────────────────────────────────────────────
+async function load() {
+  document.getElementById('content').innerHTML =
+    `<div class="loading"><div class="spinner"></div>Loading…</div>`;
+  try {
+    render(await fetchMovies());
+  } catch (err) {
+    document.getElementById('content').innerHTML =
+      `<div class="empty">${esc(err.message)}</div>`;
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.page-tab').forEach(btn =>
+  btn.addEventListener('click', () => setPage(btn.dataset.page))
+);
+
+document.getElementById('search').addEventListener('input', e => {
+  query = e.target.value;
+  if (cache) render(cache);
+});
+
+// Restore page from URL hash if present
+const initialPage = location.hash.slice(1);
+setPage(PAGES[initialPage] ? initialPage : 'top100');
+
+load();
+</script>
+</body>
+</html>

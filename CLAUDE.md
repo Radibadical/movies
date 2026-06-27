@@ -69,7 +69,7 @@ existing Category values are preserved (not overwritten with "General").
 ## Running main.py
 
 ```bash
-cd /home/jakedog/ghq/github.com/Radibadical/Movie_List_Maintainer
+cd /home/jakedog/ghq/github.com/Radibadical/movies
 source .venv/bin/activate
 python main.py              # full run with OMDb API calls
 python main.py --skip-omdb  # normalize/merge/sort only, no API calls
@@ -113,16 +113,38 @@ Restart policy: `on-failure` with 10s delay.
 | `/addwatch <title> [category]` | Add to Watch List (fetches OMDb data, records Date Added) |
 | `/setorder <title> <rank>` | Set Watch Order or Rank; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
 | `/watched <title> [| sheet [| note [| rank]]]` | Remove from Watch List; rank accepts same format as /setorder; falls back to OMDb if not in watch list; stamps Last Watched |
-| `/history [n]` | Show last n rank changes and watched events (default 10) |
+| `/history [n]` | Show last n rank changes and watched events (default 10, max 50) |
 | `/note <title> | <note text>` | Add/update Notes field |
-| `/find <title>` | Substring search across all sheets, full field display |
+| `/find <query>` | Search every tab and every column in the spreadsheet (not just Title) |
 | `/omdb <title>` | OMDb lookup without touching any sheet |
 | `/watchlist [category]` | Show Watch List, optionally filtered by category |
 | `/ranked <start> <end> [category]` | Show rank/watch-order range, grouped by sheet; optional category filter |
+| `/random [genre]` | Suggest a random movie from the Watch List; optional genre substring filter |
 | `/help` | Show help message |
 
 Categories for `/watchlist` and `/ranked`: General, Weird, Dudeist, Horror,
 Documentary, Christmas, TV.
+
+### `/find` behaviour
+Searches every worksheet in the spreadsheet (including History) via `ss.worksheets()`,
+not just `WORKSHEET_NAMES`. Matches any cell in each row, not just the Title column.
+Non-standard columns (e.g. History's Date/Type/Detail) are displayed at the bottom of
+each result block.
+
+### `/random` behaviour
+Draws only from the "Watch List" tab (not TV Watch List or other sheets). Genre argument
+is a case-insensitive substring match against the Genre column (e.g. `horror` matches
+"Horror, Thriller").
+
+### `/history` filtering
+Watch list rank changes (Watch Order updates) are excluded. Only "Rank Changed" events
+where the sheet name does not contain `WATCH_LIST_KEYWORD` and the new rank is a plain
+integer 1–200 are shown.
+
+### `/addwatch` table insertion
+Uses `insert_at = max(2, len(all_values))` to insert within the Google Sheets Table
+range rather than one row past the end. Inserting within the table range triggers
+`insertDimension`, which auto-expands the table boundary.
 
 ## Key implementation details
 
@@ -171,6 +193,12 @@ def _stars_to_str(val: float) -> str:
 
 def _rank_sort_key(s: str) -> tuple[int, float]:
     # (0, int_rank) for integers, (1, -star_val) for stars, (2, 0.0) otherwise
+    # Used where title is not available (e.g. history filtering)
+
+def _rank_sort_key_with_title(rank_val: str, title: str) -> tuple:
+    # (0, int_rank, "") for integers; (1, -star_val, title_lower) for stars
+    # Used by _reposition_by_rank and /watched insertion to sort alphabetically
+    # within the same star group
 
 def _parse_rank_input(s: str) -> tuple[str, str] | None:
     # "4" → ("4", "rank #4"); "4stars" → ("★ ★ ★ ★", "4 stars"); returns None on bad input
@@ -231,3 +259,96 @@ Install: `pip install -r requirements.txt` (inside `.venv`).
 
 Sensitive files already ignored: `.env`, `credentials.json`, `__pycache__/`,
 `*.pyc`, `.venv/`, `*-context.txt`.
+
+## Web UI
+
+**Branch:** `feature/web-ui`
+**File:** `index.html` (repo root on that branch)
+**Live URL:** https://radibadical.com/movies/
+
+A single-file static page deployed via GitHub Pages. No backend — reads directly
+from Google Sheets. The repo must be public for GitHub Pages to work on the free plan.
+
+### How it works
+
+Fetches the Movies sheet via the Google Sheets CSV export endpoint:
+```
+https://docs.google.com/spreadsheets/d/{ID}/export?format=csv&sheet=Movies
+```
+
+The `gviz/tq` JSON endpoint was tried first but does not work with Google Sheets
+Table objects — it concatenates all cell values into the column label field and
+truncates rows. The CSV export has no such issue.
+
+The sheet must be shared as **"Anyone with the link — Viewer"** for the fetch to work.
+This exposes the spreadsheet ID in the source but does not expose your email address
+(the CSV endpoint returns data only, no owner metadata).
+
+### Updating the page
+
+Edit `index.html` on the `feature/web-ui` branch and push. GitHub Pages redeploys
+automatically within ~1 minute.
+
+```bash
+git checkout feature/web-ui
+# edit index.html
+git add index.html && git commit -m "..." && git push
+```
+
+### Page structure
+
+The page splits Movies into three sections via a tab nav:
+
+| Tab | URL hash | Filter |
+|---|---|---|
+| 1–100 | `#top100` | Integer ranks 1–100 |
+| 101–200 | `#top200` | Integer ranks 101–200 |
+| ★ Rated | `#starred` | Rows with `★`/`✮` in Rank |
+
+The hash is written to the URL on tab switch, so links like
+`/movies/#starred` deep-link to a specific section.
+
+All data is fetched once and filtered client-side — switching tabs makes no
+additional network requests.
+
+**Search** runs across all three sections regardless of which tab is active.
+Clearing the search returns to the active tab's filtered view.
+
+Both a desktop table and mobile card layout are rendered simultaneously;
+CSS hides the appropriate one at a 700px breakpoint. No JS resize handling needed.
+
+### Adding more sheets
+
+The page currently shows only the Movies sheet. To add other sheets:
+1. Add a new `<button class="page-tab">` in the nav HTML
+2. Add an entry to the `PAGES` object with a rank filter function
+3. Fetch the additional sheet and merge or handle separately
+
+### Branch structure
+
+| Branch | Purpose |
+|---|---|
+| `main` | Bot-only code (`bot.py`, `main.py`) — stable |
+| `feature/web-ui` | Web UI (`index.html`) — also contains all bot code |
+
+To abandon the web UI: delete the `feature/web-ui` branch. `main` is unaffected.
+To merge it in when ready: `git checkout main && git merge feature/web-ui`.
+
+### Domain and hosting setup
+
+Custom domain: `radibadical.com` — registered on Porkbun, DNS via Cloudflare.
+
+| Repo | Serves at |
+|---|---|
+| `Radibadical/radibadical.github.io` | `radibadical.com` (root) |
+| `Radibadical/movies` | `radibadical.com/movies/` |
+
+The `radibadical.github.io` repo holds the CNAME file (`radibadical.com`) and a
+meta-refresh `index.html` that redirects the root to `/movies/`. Future projects
+get their own repos and automatically appear at `radibadical.com/<reponame>` with
+no extra DNS configuration.
+
+DNS records on Porkbun:
+- **ALIAS** `radibadical.com` → `radibadical.github.io`
+- **CNAME** `www.radibadical.com` → `radibadical.github.io`
+- MX and SPF records left in place for Porkbun email forwarding
