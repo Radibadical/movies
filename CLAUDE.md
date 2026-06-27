@@ -264,7 +264,7 @@ Sensitive files already ignored: `.env`, `credentials.json`, `__pycache__/`,
 
 **Branch:** `feature/web-ui`
 **File:** `index.html` (repo root on that branch)
-**Live URL:** https://radibadical.github.io/Movie_List_Maintainer/
+**Live URL:** https://radibadical.github.io/movies/
 
 A single-file static page deployed via GitHub Pages. No backend — reads directly
 from Google Sheets. The repo must be public for GitHub Pages to work on the free plan.
