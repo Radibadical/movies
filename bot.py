@@ -208,6 +208,18 @@ def _rank_sort_key(s: str) -> tuple[int, float]:
     return (2, 0.0)  # unrecognised — sort last
 
 
+def _rank_sort_key_with_title(rank_val: str, title: str) -> tuple:
+    """Title-aware sort key: integer ranks asc, then star ratings desc + alpha by title."""
+    s = rank_val.strip()
+    if s.isdigit():
+        return (0, int(s), "")
+    full = s.count("★")
+    half = 0.5 if "✮" in s else 0.0
+    if full or half:
+        return (1, -(full + half), title.strip().lower())
+    return (2, 0.0, "")
+
+
 def _parse_rank_input(s: str) -> tuple[str, str] | None:
     """Parse user-supplied rank input.
 
@@ -251,17 +263,7 @@ def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str
     rank_col = col_index["Rank"]
     title_col = col_index.get("Title", -1)
 
-    def full_key(rank_val: str, title: str) -> tuple:
-        s = rank_val.strip()
-        if s.isdigit():
-            return (0, int(s), "")
-        full = s.count("★")
-        half = 0.5 if "✮" in s else 0.0
-        if full or half:
-            return (1, -(full + half), title.strip().lower())
-        return (2, 0.0, "")
-
-    new_key = full_key(stored_rank, canonical_title)
+    new_key = _rank_sort_key_with_title(stored_rank, canonical_title)
 
     # Find the first row (skipping current) whose sort key >= new_key
     target_insert = len(all_values) + 1
@@ -271,7 +273,7 @@ def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str
         padded = row + [""] * max(0, len(headers) - len(row))
         r = padded[rank_col].strip()
         t = padded[title_col].strip() if title_col >= 0 else ""
-        if r and full_key(r, t) >= new_key:
+        if r and _rank_sort_key_with_title(r, t) >= new_key:
             target_insert = i
             break
 
@@ -861,14 +863,15 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if "Last Watched" in col_index:
                     new_row[col_index["Last Watched"]] = datetime.date.today().isoformat()
 
-                # Insert at correct sort position: numbered ranks first, then star ratings desc
+                # Insert at correct sort position: numbered ranks first, then star ratings desc + alpha
                 insert_index = len(all_values) + 1
                 if rank_value and "Rank" in col_index:
-                    new_key = _rank_sort_key(rank_value)
+                    new_key = _rank_sort_key_with_title(rank_value, canonical_title)
                     for i, row in enumerate(all_values[1:], start=2):
                         padded = row + [""] * max(0, len(headers) - len(row))
                         r = padded[col_index["Rank"]].strip()
-                        if r and _rank_sort_key(r) >= new_key:
+                        t = padded[col_index["Title"]].strip() if "Title" in col_index else ""
+                        if r and _rank_sort_key_with_title(r, t) >= new_key:
                             insert_index = i
                             break
 
