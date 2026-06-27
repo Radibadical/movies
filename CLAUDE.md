@@ -193,6 +193,12 @@ def _stars_to_str(val: float) -> str:
 
 def _rank_sort_key(s: str) -> tuple[int, float]:
     # (0, int_rank) for integers, (1, -star_val) for stars, (2, 0.0) otherwise
+    # Used where title is not available (e.g. history filtering)
+
+def _rank_sort_key_with_title(rank_val: str, title: str) -> tuple:
+    # (0, int_rank, "") for integers; (1, -star_val, title_lower) for stars
+    # Used by _reposition_by_rank and /watched insertion to sort alphabetically
+    # within the same star group
 
 def _parse_rank_input(s: str) -> tuple[str, str] | None:
     # "4" → ("4", "rank #4"); "4stars" → ("★ ★ ★ ★", "4 stars"); returns None on bad input
@@ -289,12 +295,34 @@ git checkout feature/web-ui
 git add index.html && git commit -m "..." && git push
 ```
 
+### Page structure
+
+The page splits Movies into three sections via a tab nav:
+
+| Tab | URL hash | Filter |
+|---|---|---|
+| 1–100 | `#top100` | Integer ranks 1–100 |
+| 101–200 | `#top200` | Integer ranks 101–200 |
+| ★ Rated | `#starred` | Rows with `★`/`✮` in Rank |
+
+The hash is written to the URL on tab switch, so links like
+`/Movie_List_Maintainer/#starred` deep-link to a specific section.
+
+All data is fetched once and filtered client-side — switching tabs makes no
+additional network requests.
+
+**Search** runs across all three sections regardless of which tab is active.
+Clearing the search returns to the active tab's filtered view.
+
+Both a desktop table and mobile card layout are rendered simultaneously;
+CSS hides the appropriate one at a 700px breakpoint. No JS resize handling needed.
+
 ### Adding more sheets
 
-The page currently shows only the Movies tab. To add other sheets:
-1. Add a tab bar back (see git history for the removed tab UI)
-2. Define display columns per sheet type (`MAIN_COLS`, `WATCH_COLS`)
-3. Add sheet names to a `SHEETS` array and call `fetchSheet(name)` per tab
+The page currently shows only the Movies sheet. To add other sheets:
+1. Add a new `<button class="page-tab">` in the nav HTML
+2. Add an entry to the `PAGES` object with a rank filter function
+3. Fetch the additional sheet and merge or handle separately
 
 ### Branch structure
 
