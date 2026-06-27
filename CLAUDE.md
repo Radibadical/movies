@@ -264,7 +264,7 @@ Sensitive files already ignored: `.env`, `credentials.json`, `__pycache__/`,
 
 **Branch:** `feature/web-ui`
 **File:** `index.html` (repo root on that branch)
-**Live URL:** https://radibadical.github.io/movies/
+**Live URL:** https://radibadical.com/movies/
 
 A single-file static page deployed via GitHub Pages. No backend — reads directly
 from Google Sheets. The repo must be public for GitHub Pages to work on the free plan.
@@ -333,3 +333,22 @@ The page currently shows only the Movies sheet. To add other sheets:
 
 To abandon the web UI: delete the `feature/web-ui` branch. `main` is unaffected.
 To merge it in when ready: `git checkout main && git merge feature/web-ui`.
+
+### Domain and hosting setup
+
+Custom domain: `radibadical.com` — registered on Porkbun, DNS via Cloudflare.
+
+| Repo | Serves at |
+|---|---|
+| `Radibadical/radibadical.github.io` | `radibadical.com` (root) |
+| `Radibadical/movies` | `radibadical.com/movies/` |
+
+The `radibadical.github.io` repo holds the CNAME file (`radibadical.com`) and a
+meta-refresh `index.html` that redirects the root to `/movies/`. Future projects
+get their own repos and automatically appear at `radibadical.com/<reponame>` with
+no extra DNS configuration.
+
+DNS records on Porkbun:
+- **ALIAS** `radibadical.com` → `radibadical.github.io`
+- **CNAME** `www.radibadical.com` → `radibadical.github.io`
+- MX and SPF records left in place for Porkbun email forwarding
