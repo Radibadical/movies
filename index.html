@@ -15,11 +15,32 @@
     }
 
     header {
-      padding: 1rem 2rem;
+      padding: 1.25rem 2rem;
       border-bottom: 1px solid #21262d;
+    }
+    .site-title {
       display: flex;
       align-items: center;
-      justify-content: center;
+      gap: 1.5rem;
+    }
+    .title-rule {
+      flex: 1;
+      height: 1px;
+      background: #2d5a8e;
+    }
+    .title-text { text-align: center; flex-shrink: 0; }
+    .title-byline {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #a07820;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+    }
+    .title-main {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #8b949e;
+      letter-spacing: 1px;
     }
 
     /* ── Page nav ── */
@@ -265,44 +286,14 @@
 <body>
 
 <header>
-  <!-- Marquee: 364×96, stars on 26px grid (x: 13…351, y: 9,35,61,87) -->
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 364 96"
-       style="display:block;max-width:400px;width:100%"
-       role="img" aria-label="Jakedog81's Top 200 Movies">
-
-    <rect x="0" y="0" width="364" height="96" fill="#0d1117" rx="5"/>
-
-    <g font-size="10" fill="#d4a017" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif">
-      <!-- Top stars (y=9) -->
-      <text x="13"  y="9">★</text><text x="39"  y="9">★</text><text x="65"  y="9">★</text>
-      <text x="91"  y="9">★</text><text x="117" y="9">★</text><text x="143" y="9">★</text>
-      <text x="169" y="9">★</text><text x="195" y="9">★</text><text x="221" y="9">★</text>
-      <text x="247" y="9">★</text><text x="273" y="9">★</text><text x="299" y="9">★</text>
-      <text x="325" y="9">★</text><text x="351" y="9">★</text>
-      <!-- Bottom stars (y=87) -->
-      <text x="13"  y="87">★</text><text x="39"  y="87">★</text><text x="65"  y="87">★</text>
-      <text x="91"  y="87">★</text><text x="117" y="87">★</text><text x="143" y="87">★</text>
-      <text x="169" y="87">★</text><text x="195" y="87">★</text><text x="221" y="87">★</text>
-      <text x="247" y="87">★</text><text x="273" y="87">★</text><text x="299" y="87">★</text>
-      <text x="325" y="87">★</text><text x="351" y="87">★</text>
-      <!-- Left stars (x=13) -->
-      <text x="13" y="35">★</text><text x="13" y="61">★</text>
-      <!-- Right stars (x=351) -->
-      <text x="351" y="35">★</text><text x="351" y="61">★</text>
-    </g>
-
-    <!-- Byline -->
-    <text x="182" y="41"
-          text-anchor="middle"
-          font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-          font-size="16" font-weight="600" fill="#a07820" letter-spacing="5">JAKEDOG81&#x2019;S</text>
-
-    <!-- Main title -->
-    <text x="182" y="72"
-          text-anchor="middle"
-          font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-          font-size="26" font-weight="700" fill="#8b949e" letter-spacing="1">TOP 200 MOVIES</text>
-  </svg>
+  <div class="site-title">
+    <span class="title-rule"></span>
+    <div class="title-text">
+      <div class="title-byline">Jakedog81&#x2019;s</div>
+      <div class="title-main">Top 200 Movies</div>
+    </div>
+    <span class="title-rule"></span>
+  </div>
 </header>
 
 <nav class="page-nav">
