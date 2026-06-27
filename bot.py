@@ -4,6 +4,7 @@
 import datetime
 import logging
 import os
+import random
 
 import gspread
 from dotenv import load_dotenv
@@ -76,6 +77,7 @@ HELP_TEXT = (
     "/watchlist <code>[category]</code> — Show the Watch List, optionally filtered by category\n\n"
     "/ranked <code>&lt;start&gt; &lt;end&gt; [category]</code> — Show movies in a rank/watch-order range, grouped by sheet\n"
     "  Categories: Movies, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
+    "/random <code>[genre]</code> — Suggest a random movie from your Watch List, optionally filtered by genre\n\n"
     "/help — Show this message"
 )
 
@@ -341,10 +343,10 @@ async def cmd_omdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_find(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/find <title> — Substring search across all sheets, showing all fields."""
+    """/find <query> — Search every tab and every column in the spreadsheet."""
     query = " ".join(context.args).strip()
     if not query:
-        await update.message.reply_text("Usage: /find <title>")
+        await update.message.reply_text("Usage: /find <query>")
         return
 
     await update.message.reply_text(f"Searching for '{query}'…")
@@ -357,54 +359,53 @@ async def cmd_find(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_lower = query.lower()
     blocks = []
 
-    for ws_name in WORKSHEET_NAMES:
-        try:
-            ws = ss.worksheet(ws_name)
-        except gspread.WorksheetNotFound:
-            continue
+    KNOWN_COLS = {
+        "Title", "Category", "Rank", "Watch Order", "Year", "Director",
+        "Genre", "Country", "IMDB Rating", "Metascore", "Notes", "Date Added", "Last Watched",
+    }
+
+    for ws in ss.worksheets():
+        ws_name = ws.title
         all_values = ws.get_all_values()
         if not all_values:
             continue
         headers = all_values[0]
-        if "Title" not in headers:
-            continue
         col_index = {h: i for i, h in enumerate(headers)}
 
         for row in all_values[1:]:
             padded = row + [""] * max(0, len(headers) - len(row))
-            cell_title = padded[col_index["Title"]].strip()
-            if query_lower not in cell_title.lower():
+            if not any(query_lower in cell.lower() for cell in padded):
                 continue
 
             def get(col, _padded=padded, _col_index=col_index):
                 return clean(_padded[_col_index[col]]) if col in _col_index else ""
 
+            title = get("Title") or padded[0].strip()
             category = get("Category")
             sheet_label = html(ws_name) + (f" [{html(category)}]" if category else "")
-            lines = [f"<b>{html(cell_title)}</b> — {sheet_label}"]
-
-            rank = get("Rank")
-            watch_order = get("Watch Order")
-            if rank:
-                lines.append(f"Rank: {html(rank)}")
-            if watch_order:
-                lines.append(f"Watch Order: {html(watch_order)}")
+            lines = [f"<b>{html(title)}</b> — {sheet_label}"]
 
             for label, col in [
+                ("Rank", "Rank"),
+                ("Watch Order", "Watch Order"),
                 ("Year", "Year"),
                 ("Director", "Director"),
                 ("Genre", "Genre"),
                 ("Country", "Country"),
                 ("IMDB Rating", "IMDB Rating"),
                 ("Metascore", "Metascore"),
+                ("Date Added", "Date Added"),
+                ("Last Watched", "Last Watched"),
+                ("Notes", "Notes"),
             ]:
                 val = get(col)
                 if val:
                     lines.append(f"{label}: {html(val)}")
 
-            notes = get("Notes")
-            if notes:
-                lines.append(f"Notes: {html(notes)}")
+            # Show any columns not in the standard set (e.g. History tab's Date/Type/Detail)
+            for h, cell in zip(headers, padded):
+                if h not in KNOWN_COLS and cell.strip():
+                    lines.append(f"{html(h)}: {html(cell.strip())}")
 
             blocks.append("\n".join(lines))
 
@@ -645,7 +646,8 @@ async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "Date Added" in col_index:
         new_row[col_index["Date Added"]] = datetime.date.today().isoformat()
 
-    ws.insert_row(new_row, len(all_values) + 1)
+    insert_at = max(2, len(all_values))
+    ws.insert_row(new_row, insert_at)
     tab_label = target_tab + (f" [{category}]" if category else "")
     await update.message.reply_text(
         f"Added <b>{html(canonical_title)}</b> ({html(data.get('Year', '?'))}) to {html(tab_label)}.",
@@ -917,7 +919,22 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     headers = all_values[0]
     col_index = {h: i for i, h in enumerate(headers)}
-    data_rows = all_values[1:]
+
+    def _visible(row: list[str]) -> bool:
+        padded = row + [""] * max(0, len(headers) - len(row))
+        etype = padded[col_index["Type"]] if "Type" in col_index else ""
+        if etype != "Rank Changed":
+            return True
+        detail = padded[col_index["Detail"]] if "Detail" in col_index else ""
+        if WATCH_LIST_KEYWORD in detail:
+            return False
+        arrow = detail.rfind("→")
+        if arrow == -1:
+            return True
+        new_rank = detail[arrow + 1:].strip()
+        return new_rank.isdigit() and 1 <= int(new_rank) <= 200
+
+    data_rows = [r for r in all_values[1:] if _visible(r)]
     recent = list(reversed(data_rows[-n:]))
 
     lines = [f"<b>History</b> (last {len(recent)} of {len(data_rows)} entries)\n"]
@@ -937,6 +954,75 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for chunk in _send_chunked(lines[1:], "\n"):
             await update.message.reply_text(header + chunk, parse_mode="HTML")
             header = ""
+
+
+async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/random [genre] — Suggest a random movie from the Watch List, optionally filtered by genre."""
+    genre_filter = " ".join(context.args).strip().lower() if context.args else ""
+
+    try:
+        ss = get_spreadsheet()
+    except Exception as err:
+        await update.message.reply_text(f"Could not connect to sheet: {err}")
+        return
+
+    candidates = []
+
+    for ws_name in ["Watch List"]:
+        try:
+            ws = ss.worksheet(ws_name)
+        except gspread.WorksheetNotFound:
+            continue
+        all_values = ws.get_all_values()
+        if not all_values or len(all_values) < 2:
+            continue
+        headers = all_values[0]
+        col_index = {h: i for i, h in enumerate(headers)}
+        if "Title" not in col_index:
+            continue
+
+        for row in all_values[1:]:
+            padded = row + [""] * max(0, len(headers) - len(row))
+            title = padded[col_index["Title"]].strip()
+            if not title:
+                continue
+            genre = clean(padded[col_index["Genre"]]) if "Genre" in col_index else ""
+            if genre_filter and genre_filter not in genre.lower():
+                continue
+            year = clean(padded[col_index["Year"]]) if "Year" in col_index else ""
+            director = clean(padded[col_index["Director"]]) if "Director" in col_index else ""
+            category = clean(padded[col_index["Category"]]) if "Category" in col_index else ""
+            imdb = clean(padded[col_index["IMDB Rating"]]) if "IMDB Rating" in col_index else ""
+            candidates.append((title, year, director, genre, category, imdb, ws_name))
+
+    if not candidates:
+        if genre_filter:
+            await update.message.reply_text(
+                f"No movies in your Watch List match the genre '<b>{html(genre_filter)}</b>'.",
+                parse_mode="HTML",
+            )
+        else:
+            await update.message.reply_text("Your Watch List is empty.")
+        return
+
+    title, year, director, genre, category, imdb, ws_name = random.choice(candidates)
+
+    header = f"<b>{html(title)}</b>"
+    if year:
+        header += f" ({html(year)})"
+    lines = [header]
+    if director:
+        lines.append(f"Director: {html(director)}")
+    if genre:
+        lines.append(f"Genre: {html(genre)}")
+    if imdb:
+        lines.append(f"IMDB Rating: {html(imdb)}")
+    sheet_label = ws_name + (f" [{category}]" if category else "")
+    lines.append(f"List: {html(sheet_label)}")
+    pool_note = f"({len(candidates)} {html(genre_filter) + ' ' if genre_filter else ''}title(s) in Watch List)"
+    lines.append(f"\n{pool_note}")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1014,6 +1100,7 @@ def main():
     app.add_handler(CommandHandler("watched", cmd_watched))
     app.add_handler(CommandHandler("history", cmd_history))
     app.add_handler(CommandHandler("note", cmd_note))
+    app.add_handler(CommandHandler("random", cmd_random))
 
     print(f"Bot running. Sheet: {SHEET_NAME}")
     app.run_polling()
