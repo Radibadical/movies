@@ -17,10 +17,6 @@
     header {
       padding: 1.25rem 2rem;
       border-bottom: 1px solid #21262d;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
     }
 
     header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; }
@@ -47,9 +43,31 @@
     .search:focus { border-color: #58a6ff; }
     .search::placeholder { color: #484f58; }
 
-    .count { font-size: 0.75rem; color: #484f58; }
+    .count { font-size: 0.75rem; color: #484f58; white-space: nowrap; }
 
-    /* ── Table ── */
+    /* ── States ── */
+    .loading, .empty {
+      padding: 4rem 2rem;
+      text-align: center;
+      color: #484f58;
+      font-size: 0.875rem;
+    }
+
+    .spinner {
+      width: 1.25rem;
+      height: 1.25rem;
+      border: 2px solid #21262d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 0.75rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ═══════════════════════════════════════════════
+       DESKTOP TABLE (≥ 700px)
+    ═══════════════════════════════════════════════ */
     .table-wrap {
       padding: 0 2rem 3rem;
       overflow-x: auto;
@@ -76,24 +94,21 @@
       background: #0d1117;
     }
 
-    /* Column widths */
-    .th-rank       { width: 3.5rem; }
-    .th-title      { min-width: 180px; }
-    .th-year       { width: 4rem; }
-    .th-director   { width: 150px; }
-    .th-country    { width: 80px; }
-    .th-genre      { width: 150px; }
-    .th-imdb       { width: 72px; }
-    .th-meta       { width: 60px; }
-    .th-watched    { width: 90px; }
+    .th-rank     { width: 3.5rem; }
+    .th-title    { min-width: 180px; }
+    .th-year     { width: 4rem; }
+    .th-director { width: 150px; }
+    .th-country  { width: 80px; }
+    .th-genre    { width: 150px; }
+    .th-imdb     { width: 72px; }
+    .th-meta     { width: 60px; }
+    .th-watched  { width: 90px; }
 
     tbody tr.main-row { border-top: 1px solid #161b22; }
     tbody tr.main-row:hover td,
     tbody tr.main-row:hover + tr.notes-row td { background: #161b22; }
-
     tbody tr.notes-row td { padding-top: 0; padding-bottom: 0.625rem; }
 
-    /* Star-rated section divider */
     tr.star-divider td {
       padding: 0.75rem 0.75rem 0.5rem;
       font-size: 0.7rem;
@@ -101,15 +116,10 @@
       letter-spacing: 0.08em;
       color: #484f58;
       border-top: 1px solid #21262d;
-      border-bottom: none;
     }
 
-    td {
-      padding: 0.5625rem 0.75rem;
-      vertical-align: top;
-    }
+    td { padding: 0.5625rem 0.75rem; vertical-align: top; }
 
-    /* ── Cell types ── */
     .col-rank {
       font-weight: 700;
       color: #484f58;
@@ -119,73 +129,113 @@
       padding-top: 0.625rem;
     }
     .col-rank.stars { color: #d4a017; font-size: 0.8125rem; }
-
-    .col-title {
-      font-weight: 500;
-      color: #e6edf3;
-    }
-
-    .col-year {
-      color: #8b949e;
-      font-size: 0.75rem;
-      white-space: nowrap;
-    }
-
+    .col-title { font-weight: 500; color: #e6edf3; }
+    .col-year { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
     .col-director { color: #c9d1d9; }
-
     .col-country {
-      color: #8b949e;
-      font-size: 0.75rem;
-      max-width: 80px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      color: #8b949e; font-size: 0.75rem;
+      max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-
-    .col-genre {
-      color: #8b949e;
-      font-size: 0.75rem;
-    }
-
+    .col-genre { color: #8b949e; font-size: 0.75rem; }
     .col-imdb { color: #d4a017; white-space: nowrap; }
-
     .col-meta { color: #8b949e; }
-
-    .col-watched {
-      color: #484f58;
-      font-size: 0.75rem;
-      white-space: nowrap;
+    .col-watched { color: #484f58; font-size: 0.75rem; white-space: nowrap; }
+    .col-notes {
+      color: #8b949e; font-style: italic; line-height: 1.55;
+      padding-left: 3.5rem;
     }
 
-    .col-notes {
+    /* ═══════════════════════════════════════════════
+       MOBILE CARDS (< 700px)
+    ═══════════════════════════════════════════════ */
+    .cards {
+      padding: 0.5rem 1rem 3rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 0.875rem 1rem;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+
+    .card-rank {
+      font-weight: 700;
+      color: #484f58;
+      font-size: 0.8125rem;
+      font-variant-numeric: tabular-nums;
+      min-width: 2rem;
+      padding-top: 0.15rem;
+      flex-shrink: 0;
+    }
+    .card-rank.stars { color: #d4a017; font-size: 0.75rem; line-height: 1.4; }
+
+    .card-body { flex: 1; min-width: 0; }
+
+    .card-title {
+      font-weight: 600;
+      color: #e6edf3;
+      font-size: 0.9375rem;
+      line-height: 1.3;
+    }
+
+    .card-secondary {
+      margin-top: 0.3rem;
+      font-size: 0.75rem;
+      color: #8b949e;
+      line-height: 1.4;
+    }
+
+    .card-genre {
+      margin-top: 0.2rem;
+      font-size: 0.7rem;
+      color: #484f58;
+    }
+
+    .card-imdb {
+      color: #d4a017;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+      padding-top: 0.15rem;
+    }
+
+    .card-review {
+      margin-top: 0.75rem;
+      padding-top: 0.625rem;
+      border-top: 1px solid #21262d;
+      font-size: 0.8rem;
       color: #8b949e;
       font-style: italic;
-      line-height: 1.55;
-      padding-left: 3.5rem; /* align under title */
+      line-height: 1.6;
     }
 
-    /* ── States ── */
-    .loading, .empty {
-      padding: 4rem 2rem;
-      text-align: center;
+    .card-section-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
       color: #484f58;
-      font-size: 0.875rem;
+      padding: 0.75rem 0 0.25rem;
     }
 
-    .spinner {
-      width: 1.25rem;
-      height: 1.25rem;
-      border: 2px solid #21262d;
-      border-top-color: #58a6ff;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      margin: 0 auto 0.75rem;
+    /* ── Responsive breakpoint ── */
+    @media (min-width: 700px) {
+      .cards { display: none; }
     }
 
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    @media (max-width: 600px) {
-      header, .toolbar, .table-wrap { padding-left: 1rem; padding-right: 1rem; }
+    @media (max-width: 699px) {
+      .table-wrap { display: none; }
+      header, .toolbar { padding-left: 1rem; padding-right: 1rem; }
       .search { width: 100%; }
     }
   </style>
@@ -207,7 +257,6 @@
 // ── Config ───────────────────────────────────────────────────────────────────
 const SPREADSHEET_ID = '12ETUXbIPiwozu_M6Y1Z1hmpsevIbBSxyJQNGbKM-22M';
 
-// Columns shown in the main row (Notes is rendered as a sub-row separately)
 const TABLE_COLS = [
   'Rank', 'Title', 'Year', 'Director', 'Country',
   'Genre', 'IMDB Rating', 'Metascore', 'Last Watched',
@@ -268,17 +317,9 @@ function isStarRank(val) {
   return val.includes('★') || val.includes('✮');
 }
 
-// ── Render ───────────────────────────────────────────────────────────────────
-function renderTable({ cols, rows }) {
-  const idx = {};
-  cols.forEach((c, i) => { if (c) idx[c] = i; });
-
-  const displayCols = TABLE_COLS.filter(c => c in idx);
-  const notesIdx = idx['Notes'];
-  const colCount = displayCols.length;
-
+function filterRows(rows, idx, displayCols, notesIdx) {
   const q = query.toLowerCase();
-  const filtered = rows.filter(row => {
+  return rows.filter(row => {
     const title = row[idx['Title']] || '';
     if (!title.trim()) return false;
     if (!q) return true;
@@ -286,14 +327,23 @@ function renderTable({ cols, rows }) {
     return displayCols.some(c => (row[idx[c]] || '').toLowerCase().includes(q))
       || note.toLowerCase().includes(q);
   });
+}
+
+// ── Desktop table ─────────────────────────────────────────────────────────────
+function renderTable({ cols, rows }) {
+  const idx = {};
+  cols.forEach((c, i) => { if (c) idx[c] = i; });
+
+  const displayCols = TABLE_COLS.filter(c => c in idx);
+  const notesIdx = idx['Notes'];
+  const colCount = displayCols.length;
+  const filtered = filterRows(rows, idx, displayCols, notesIdx);
 
   document.getElementById('count').textContent =
     filtered.length ? `${filtered.length} title${filtered.length !== 1 ? 's' : ''}` : '';
 
   if (!filtered.length) {
-    document.getElementById('content').innerHTML =
-      `<div class="empty">No results${q ? ` for "${esc(q)}"` : ''}.</div>`;
-    return;
+    return `<div class="empty">No results${query ? ` for "${esc(query)}"` : ''}.</div>`;
   }
 
   const thClass = {
@@ -301,8 +351,7 @@ function renderTable({ cols, rows }) {
     'Director': 'th-director', 'Country': 'th-country', 'Genre': 'th-genre',
     'IMDB Rating': 'th-imdb', 'Metascore': 'th-meta', 'Last Watched': 'th-watched',
   };
-  const head = displayCols
-    .map(c => `<th class="${thClass[c] || ''}">${esc(c)}</th>`).join('');
+  const head = displayCols.map(c => `<th class="${thClass[c] || ''}">${esc(c)}</th>`).join('');
 
   let inStarSection = false;
   let body = '';
@@ -311,7 +360,6 @@ function renderTable({ cols, rows }) {
     const rank = row[idx['Rank']] || '';
     const note = notesIdx !== undefined ? (row[notesIdx] || '') : '';
 
-    // Insert divider when transitioning from numbered to star-rated
     if (!inStarSection && isStarRank(rank)) {
       inStarSection = true;
       body += `<tr class="star-divider"><td colspan="${colCount}">Star ratings</td></tr>`;
@@ -324,40 +372,91 @@ function renderTable({ cols, rows }) {
           return isStarRank(val)
             ? `<td class="col-rank stars">${esc(val)}</td>`
             : `<td class="col-rank">${esc(val)}</td>`;
-        case 'Title':    return `<td class="col-title">${esc(val)}</td>`;
-        case 'Year':     return `<td class="col-year">${esc(val)}</td>`;
-        case 'Director': return `<td class="col-director">${esc(val)}</td>`;
-        case 'Country':  return val ? `<td class="col-country" title="${esc(val)}">${esc(val)}</td>` : '<td></td>';
-        case 'Genre':    return `<td class="col-genre">${esc(val)}</td>`;
+        case 'Title':       return `<td class="col-title">${esc(val)}</td>`;
+        case 'Year':        return `<td class="col-year">${esc(val)}</td>`;
+        case 'Director':    return `<td class="col-director">${esc(val)}</td>`;
+        case 'Country':     return val ? `<td class="col-country" title="${esc(val)}">${esc(val)}</td>` : '<td></td>';
+        case 'Genre':       return `<td class="col-genre">${esc(val)}</td>`;
         case 'IMDB Rating': return val ? `<td class="col-imdb">★ ${esc(val)}</td>` : '<td></td>';
         case 'Metascore':   return `<td class="col-meta">${esc(val)}</td>`;
-        case 'Last Watched': return val ? `<td class="col-watched">${esc(val)}</td>` : '<td></td>';
-        default: return `<td>${esc(val)}</td>`;
+        case 'Last Watched':return val ? `<td class="col-watched">${esc(val)}</td>` : '<td></td>';
+        default:            return `<td>${esc(val)}</td>`;
       }
     }).join('');
 
     body += `<tr class="main-row">${tds}</tr>`;
-
     if (note) {
-      body += `<tr class="notes-row">` +
-        `<td></td>` +
-        `<td colspan="${colCount - 1}" class="col-notes">${esc(note)}</td>` +
-        `</tr>`;
+      body += `<tr class="notes-row"><td></td>` +
+        `<td colspan="${colCount - 1}" class="col-notes">${esc(note)}</td></tr>`;
     }
   }
 
-  document.getElementById('content').innerHTML =
-    `<div class="table-wrap"><table>` +
-    `<thead><tr>${head}</tr></thead>` +
-    `<tbody>${body}</tbody>` +
-    `</table></div>`;
+  return `<div class="table-wrap"><table>` +
+    `<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+// ── Mobile cards ──────────────────────────────────────────────────────────────
+function renderCards({ cols, rows }) {
+  const idx = {};
+  cols.forEach((c, i) => { if (c) idx[c] = i; });
+
+  const displayCols = TABLE_COLS.filter(c => c in idx);
+  const notesIdx = idx['Notes'];
+  const filtered = filterRows(rows, idx, displayCols, notesIdx);
+
+  if (!filtered.length) return null; // count already set by renderTable
+
+  let inStarSection = false;
+  let html = '<div class="cards">';
+
+  for (const row of filtered) {
+    const rank    = row[idx['Rank']]        || '';
+    const title   = row[idx['Title']]       || '';
+    const year    = row[idx['Year']]        || '';
+    const dir     = row[idx['Director']]    || '';
+    const genre   = row[idx['Genre']]       || '';
+    const imdb    = row[idx['IMDB Rating']] || '';
+    const note    = notesIdx !== undefined ? (row[notesIdx] || '') : '';
+
+    if (!inStarSection && isStarRank(rank)) {
+      inStarSection = true;
+      html += `<div class="card-section-label">Star ratings</div>`;
+    }
+
+    const rankClass = isStarRank(rank) ? 'card-rank stars' : 'card-rank';
+    const secondary = [year, dir].filter(Boolean).join(' · ');
+
+    html += `<div class="card">
+      <div class="card-header">
+        <div class="${rankClass}">${esc(rank)}</div>
+        <div class="card-body">
+          <div class="card-title">${esc(title)}</div>
+          ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
+          ${genre    ? `<div class="card-genre">${esc(genre)}</div>` : ''}
+        </div>
+        ${imdb ? `<div class="card-imdb">★ ${esc(imdb)}</div>` : ''}
+      </div>
+      ${note ? `<div class="card-review">${esc(note)}</div>` : ''}
+    </div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+// ── Render both (CSS hides the right one per breakpoint) ─────────────────────
+function render(data) {
+  const tableHtml = renderTable(data);
+  const cardsHtml = renderCards(data);
+  document.getElementById('content').innerHTML = tableHtml + (cardsHtml || '');
+}
+
+// ── Load ─────────────────────────────────────────────────────────────────────
 async function load() {
   document.getElementById('content').innerHTML =
     `<div class="loading"><div class="spinner"></div>Loading…</div>`;
   try {
-    renderTable(await fetchMovies());
+    render(await fetchMovies());
   } catch (err) {
     document.getElementById('content').innerHTML =
       `<div class="empty">${esc(err.message)}</div>`;
@@ -367,7 +466,7 @@ async function load() {
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.getElementById('search').addEventListener('input', e => {
   query = e.target.value;
-  if (cache) renderTable(cache);
+  if (cache) render(cache);
 });
 
 load();
