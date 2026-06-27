@@ -143,6 +143,20 @@
       padding-top: 0.625rem;
     }
     .col-rank.stars { color: #d4a017; font-size: 0.8125rem; }
+    .half-star {
+      display: inline-block;
+      position: relative;
+      color: #484f58;
+    }
+    .half-star::before {
+      content: '★';
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 50%;
+      overflow: hidden;
+      color: #d4a017;
+    }
     .col-title    { font-weight: 500; color: #e6edf3; }
     .col-year     { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
     .col-director { color: #c9d1d9; }
@@ -192,6 +206,7 @@
       flex-shrink: 0;
     }
     .card-rank.stars { color: #d4a017; font-size: 0.75rem; line-height: 1.4; }
+    .card-rank .half-star { font-size: inherit; }
 
     .card-body { flex: 1; min-width: 0; }
 
@@ -336,6 +351,14 @@ function isStarRank(val) {
   return val.includes('★') || val.includes('✮');
 }
 
+function renderStars(val) {
+  return val.split(' ').map(ch => {
+    if (ch === '★') return '★';
+    if (ch === '✮') return '<span class="half-star">★</span>';
+    return '';
+  }).join(' ');
+}
+
 function starLabel(val) {
   const full = (val.match(/★/g) || []).length;
   const half = val.includes('✮');
@@ -390,7 +413,7 @@ function buildTable({ cols, rows }) {
       switch (c) {
         case 'Rank':
           return isStarRank(val)
-            ? `<td class="col-rank stars" title="${starLabel(val)}">${esc(val)}</td>`
+            ? `<td class="col-rank stars" title="${starLabel(val)}">${renderStars(val)}</td>`
             : `<td class="col-rank">${esc(val)}</td>`;
         case 'Title':        return `<td class="col-title">${esc(val)}</td>`;
         case 'Year':         return `<td class="col-year">${esc(val)}</td>`;
@@ -442,7 +465,7 @@ function buildCards({ cols, rows }) {
 
     html += `<div class="card">
       <div class="card-header">
-        <div class="${rankClass}"${rankTitle}>${esc(rank)}</div>
+        <div class="${rankClass}"${rankTitle}>${isStarRank(rank) ? renderStars(rank) : esc(rank)}</div>
         <div class="card-body">
           <div class="card-title">${esc(title)}</div>
           ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
