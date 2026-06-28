@@ -292,9 +292,60 @@
 
     @media (max-width: 699px) {
       .table-wrap { display: none; }
-      header, .toolbar, .page-nav { padding-left: 1rem; padding-right: 1rem; }
+      header, .toolbar, .page-nav, .history-section { padding-left: 1rem; padding-right: 1rem; }
       .search { width: 100%; }
     }
+
+    /* ── History feed ── */
+    .history-section {
+      border-bottom: 1px solid #21262d;
+      padding: 0.875rem 2rem;
+    }
+    .history-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .history-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #484f58;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .history-count { font-size: 0.7rem; color: #484f58; }
+    .history-feed { display: flex; flex-direction: column; gap: 0.2rem; }
+    .history-entry {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      flex-wrap: wrap;
+    }
+    .h-date {
+      color: #484f58;
+      font-size: 0.7rem;
+      white-space: nowrap;
+      min-width: 5.5rem;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+    .h-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .h-badge-watched { background: #1a3a2a; color: #3fb950; }
+    .h-badge-ranked  { background: #1a2a3a; color: #58a6ff; }
+    .h-title { color: #e6edf3; font-weight: 600; }
+    .h-sep   { color: #484f58; }
+    .h-detail { color: #8b949e; }
   </style>
 </head>
 <body>
@@ -310,6 +361,16 @@
     <span class="title-rule"></span>
   </div>
 </header>
+
+<section class="history-section">
+  <div class="history-header">
+    <span class="history-label">Recent Activity</span>
+    <span class="history-count" id="history-count"></span>
+  </div>
+  <div class="history-feed" id="history-feed">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+</section>
 
 <nav class="page-nav">
   <button class="page-tab" data-page="top100">1–100</button>
@@ -551,6 +612,77 @@ async function load() {
   }
 }
 
+// ── History ───────────────────────────────────────────────────────────────────
+const HISTORY_LIMIT = 20;
+
+function historyVisible(row, ci) {
+  const type = row[ci['Type']] || '';
+  if (type !== 'Rank Changed') return true;
+  const detail = row[ci['Detail']] || '';
+  if (detail.includes('Watch List')) return false;
+  const arrow = detail.lastIndexOf('→');
+  if (arrow === -1) return true;
+  const newRank = detail.slice(arrow + 1).trim();
+  return /^\d+$/.test(newRank) && +newRank >= 1 && +newRank <= 200;
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return iso;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+async function fetchHistory() {
+  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&sheet=History`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const parsed = parseCSV(await res.text());
+  if (parsed.length < 2) return { entries: [], total: 0 };
+  const cols = parsed[0].map(c => c.trim());
+  const ci = {};
+  cols.forEach((c, i) => { if (c) ci[c] = i; });
+  const visible = parsed.slice(1)
+    .map(r => r.map(c => c.trim()))
+    .filter(r => historyVisible(r, ci));
+  const entries = visible.slice(-HISTORY_LIMIT).reverse();
+  return { entries, total: visible.length, ci };
+}
+
+function renderHistory({ entries, total, ci }) {
+  document.getElementById('history-count').textContent =
+    total ? `last ${entries.length} of ${total}` : '';
+  if (!entries.length) {
+    document.getElementById('history-feed').innerHTML = '<div class="empty">No history yet.</div>';
+    return;
+  }
+  let html = '';
+  for (const row of entries) {
+    const date   = fmtDate(row[ci['Date']]   || '');
+    const type   = row[ci['Type']]            || '';
+    const title  = esc(row[ci['Title']]       || '');
+    const detail = esc(row[ci['Detail']]      || '');
+    const badgeClass = type === 'Watched' ? 'h-badge h-badge-watched' : 'h-badge h-badge-ranked';
+    const badgeText  = type === 'Watched' ? 'WATCHED' : 'RANKED';
+    html += `<div class="history-entry">` +
+      `<span class="h-date">${esc(date)}</span>` +
+      `<span class="${badgeClass}">${badgeText}</span>` +
+      `<span class="h-title">${title}</span>` +
+      `<span class="h-sep">&mdash;</span>` +
+      `<span class="h-detail">${detail}</span>` +
+      `</div>`;
+  }
+  document.getElementById('history-feed').innerHTML = html;
+}
+
+async function loadHistory() {
+  try {
+    renderHistory(await fetchHistory());
+  } catch (err) {
+    document.getElementById('history-feed').innerHTML =
+      `<div class="empty">${esc(err.message)}</div>`;
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.querySelectorAll('.page-tab').forEach(btn =>
   btn.addEventListener('click', () => setPage(btn.dataset.page))
@@ -566,6 +698,7 @@ const initialPage = location.hash.slice(1);
 setPage(PAGES[initialPage] ? initialPage : 'top100');
 
 load();
+loadHistory();
 </script>
 </body>
 </html>
