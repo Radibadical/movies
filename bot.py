@@ -41,8 +41,8 @@ WORKSHEET_NAMES = [
 ]
 
 WATCH_LIST_KEYWORD = "Watch List"
-MOVIE_LIST_COLUMNS = ["Rank", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Last Watched", "Notes"]
-WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Category", "Date Added", "Notes"]
+MOVIE_LIST_COLUMNS = ["Rank", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Last Watched", "Notes", "Tags"]
+WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Date Added", "Notes", "Tags"]
 LOG_TAB = "History"
 LOG_COLUMNS = ["Date", "Type", "Title", "Detail"]
 
@@ -501,7 +501,7 @@ async def cmd_find(update: Update, context: ContextTypes.DEFAULT_TYPE):
     blocks = []
 
     KNOWN_COLS = {
-        "Title", "Category", "Rank", "Watch Order", "Year", "Director",
+        "Title", "Tags", "Rank", "Watch Order", "Year", "Director",
         "Genre", "Country", "IMDB Rating", "Metascore", "Notes", "Date Added", "Last Watched",
     }
 
@@ -522,7 +522,7 @@ async def cmd_find(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return clean(_padded[_col_index[col]]) if col in _col_index else ""
 
             title = get("Title") or padded[0].strip()
-            category = get("Category")
+            category = get("Tags")
             sheet_label = html(ws_name) + (f" [{html(category)}]" if category else "")
             lines = [f"<b>{html(title)}</b> — {sheet_label}"]
 
@@ -594,7 +594,7 @@ async def cmd_watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title = padded[col_index["Title"]].strip() if "Title" in col_index else ""
         if not title:
             continue
-        category = padded[col_index["Category"]].strip() if "Category" in col_index else ""
+        category = padded[col_index["Tags"]].strip() if "Tags" in col_index else ""
         if category_filter and category.lower() != category_filter:
             continue
         order = padded[col_index["Watch Order"]].strip() if "Watch Order" in col_index else ""
@@ -672,8 +672,8 @@ async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
     new_row = _omdb_row(data, headers)
-    if "Category" in col_index:
-        new_row[col_index["Category"]] = category
+    if "Tags" in col_index:
+        new_row[col_index["Tags"]] = category
     if "Date Added" in col_index:
         new_row[col_index["Date Added"]] = datetime.date.today().isoformat()
 
@@ -1052,7 +1052,7 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
             genre = clean(padded[col_index["Genre"]]) if "Genre" in col_index else ""
             if genre_filter and genre_filter not in genre.lower():
                 continue
-            category = clean(padded[col_index["Category"]]) if "Category" in col_index else ""
+            category = clean(padded[col_index["Tags"]]) if "Tags" in col_index else ""
             if category_filter and category != category_filter:
                 continue
             year = clean(padded[col_index["Year"]]) if "Year" in col_index else ""
