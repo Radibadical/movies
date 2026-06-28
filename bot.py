@@ -7,28 +7,91 @@ import os
 import random
 
 import gspread
+import requests
 from dotenv import load_dotenv
+from google.oauth2.service_account import Credentials
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-from main import (
-    CREDENTIALS_FILE,
-    LOG_COLUMNS,
-    LOG_TAB,
-    MOVIE_LIST_COLUMNS,
-    OMDB_API_KEY,
-    SHEET_NAME,
-    WATCH_LIST_COLUMNS,
-    WATCH_LIST_KEYWORD,
-    WORKSHEET_NAMES,
-    OmdbInvalidKey,
-    OmdbQuotaExceeded,
-    clean,
-    fetch_omdb,
-    open_spreadsheet,
-)
-
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+CREDENTIALS_FILE = os.environ.get("CREDENTIALS_FILE", "credentials.json")
+OMDB_API_KEY = os.environ.get("OMDB_API_KEY", "")
+SHEET_NAME = os.environ.get("SHEET_NAME", "")
+
+DEFAULT_WORKSHEETS = [
+    "Movies",
+    "Weird Movies",
+    "Dudeist Movies",
+    "Documentaries",
+    "Horror/Halloween",
+    "TV",
+    "Watch List",
+    "TV Watch List",
+    "Christmas",
+]
+WORKSHEET_NAMES = [
+    w.strip()
+    for w in os.environ.get("WORKSHEET_NAMES", ",".join(DEFAULT_WORKSHEETS)).split(",")
+    if w.strip()
+]
+
+WATCH_LIST_KEYWORD = "Watch List"
+MOVIE_LIST_COLUMNS = ["Rank", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Last Watched", "Notes"]
+WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Category", "Date Added", "Notes"]
+LOG_TAB = "History"
+LOG_COLUMNS = ["Date", "Type", "Title", "Detail"]
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+def open_spreadsheet(credentials_file: str, sheet_name: str):
+    creds = Credentials.from_service_account_file(credentials_file, scopes=SCOPES)
+    client = gspread.authorize(creds)
+    return client.open(sheet_name)
+
+
+class OmdbQuotaExceeded(Exception):
+    pass
+
+
+class OmdbInvalidKey(Exception):
+    pass
+
+
+def fetch_omdb(title: str, api_key: str) -> dict | None:
+    """Query OMDb by title. Returns the data dict or None if not found."""
+    response = requests.get(
+        "https://www.omdbapi.com/",
+        params={"t": title, "apikey": api_key},
+        timeout=10,
+    )
+    if response.status_code == 401:
+        raise OmdbInvalidKey()
+    response.raise_for_status()
+    data = response.json()
+    if data.get("Response") != "True":
+        error = data.get("Error", "")
+        if "limit" in error.lower():
+            raise OmdbQuotaExceeded()
+        return None
+    return data
+
+
+def clean(value: str) -> str:
+    """Strip whitespace and replace OMDb's 'N/A' sentinel with empty string."""
+    value = value.strip()
+    return "" if value == "N/A" else value
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
