@@ -663,40 +663,100 @@ async function fetchHistory() {
 function buildHistoryContent({ entries, total, ci }) {
   if (!entries.length) return '<div class="empty">No history yet.</div>';
 
+  // Build title → movie row lookup from the already-loaded Movies cache
+  const movieLookup = {};
+  const midx = {};
+  if (cache) {
+    cache.cols.forEach((c, i) => { if (c) midx[c] = i; });
+    for (const mrow of cache.rows) {
+      const t = (mrow[midx['Title']] || '').toLowerCase();
+      if (t) movieLookup[t] = mrow;
+    }
+  }
+
+  const getMov = (histRow, field) => {
+    const m = movieLookup[(histRow[ci['Title']] || '').toLowerCase()];
+    return m ? (m[midx[field]] || '') : '';
+  };
+
   const countLine = total > HISTORY_LIMIT
     ? `<div class="count" style="padding:0.5rem 2rem">Last ${entries.length} of ${total} entries</div>` : '';
 
-  let out = countLine + '<div class="table-wrap"><table>' +
-    '<thead><tr>' +
-    '<th class="th-watched">Date</th>' +
-    '<th style="width:6rem">Type</th>' +
-    '<th class="th-title">Title</th>' +
-    '<th>Detail</th>' +
-    '</tr></thead><tbody>';
+  const HIST_COLS = ['Date Watched', 'Rank', 'Title', 'Year', 'Director', 'Country', 'Genre', 'IMDB Rating', 'Metascore'];
+  const thClass = {
+    'Date Watched': 'th-watched', 'Rank': 'th-rank', 'Title': 'th-title', 'Year': 'th-year',
+    'Director': 'th-director', 'Country': 'th-country', 'Genre': 'th-genre',
+    'IMDB Rating': 'th-imdb', 'Metascore': 'th-meta',
+  };
+  const head = HIST_COLS.map(c => `<th class="${thClass[c] || ''}">${esc(c)}</th>`).join('');
 
+  let body = '';
   for (const row of entries) {
-    const date   = fmtDate(row[ci['Date']]  || '');
-    const title  = esc(row[ci['Title']]     || '');
-    const detail = esc(row[ci['Detail']]    || '');
-    out += `<tr class="main-row">` +
-      `<td class="col-watched">${esc(date)}</td>` +
-      `<td><span class="h-badge h-badge-watched">WATCHED</span></td>` +
-      `<td class="col-title">${title}</td>` +
-      `<td class="col-director">${detail}</td>` +
-      `</tr>`;
+    const date  = fmtDate(row[ci['Date']] || '');
+    const title = getMov(row, 'Title') || esc(row[ci['Title']] || '');
+    const rank  = getMov(row, 'Rank');
+    const year  = getMov(row, 'Year');
+    const dir   = getMov(row, 'Director');
+    const cntry = getMov(row, 'Country');
+    const genre = getMov(row, 'Genre');
+    const imdb  = getMov(row, 'IMDB Rating');
+    const meta  = getMov(row, 'Metascore');
+    const note  = getMov(row, 'Notes');
+
+    const tds = HIST_COLS.map(c => {
+      switch (c) {
+        case 'Date Watched':  return `<td class="col-watched">${esc(date)}</td>`;
+        case 'Rank':
+          if (isStarRank(rank)) return `<td class="col-rank stars" title="${starLabel(rank)}">${renderStars(rank)}</td>`;
+          return `<td class="col-rank">${esc(rank)}</td>`;
+        case 'Title':        return `<td class="col-title">${esc(title)}</td>`;
+        case 'Year':         return `<td class="col-year">${esc(year)}</td>`;
+        case 'Director':     return `<td class="col-director">${esc(dir)}</td>`;
+        case 'Country':      return cntry ? `<td class="col-country" title="${esc(cntry)}">${esc(cntry)}</td>` : '<td></td>';
+        case 'Genre':        return `<td class="col-genre">${esc(genre)}</td>`;
+        case 'IMDB Rating':  return imdb ? `<td class="col-imdb">★ ${esc(imdb)}</td>` : '<td></td>';
+        case 'Metascore':    return `<td class="col-meta">${esc(meta)}</td>`;
+        default:             return '<td></td>';
+      }
+    }).join('');
+
+    body += `<tr class="main-row">${tds}</tr>`;
+    if (note) {
+      body += `<tr class="notes-row"><td></td><td></td>` +
+        `<td colspan="${HIST_COLS.length - 2}" class="col-notes">${esc(note)}</td></tr>`;
+    }
   }
-  out += '</tbody></table></div>';
+
+  let out = countLine +
+    `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 
   out += '<div class="cards">';
   for (const row of entries) {
-    const date   = fmtDate(row[ci['Date']]   || '');
-    const title  = esc(row[ci['Title']]       || '');
-    const detail = esc(row[ci['Detail']]      || '');
-    out += `<div class="card"><div class="card-header"><div class="card-body">` +
-      `<div class="card-title">${title}</div>` +
-      `<div class="card-secondary">${esc(date)}&nbsp;&nbsp;<span class="h-badge h-badge-watched">WATCHED</span></div>` +
-      `${detail ? `<div class="card-genre" style="color:#8b949e;font-size:0.75rem;margin-top:0.2rem">${detail}</div>` : ''}` +
-      `</div></div></div>`;
+    const date  = fmtDate(row[ci['Date']] || '');
+    const title = getMov(row, 'Title') || (row[ci['Title']] || '');
+    const rank  = getMov(row, 'Rank');
+    const year  = getMov(row, 'Year');
+    const dir   = getMov(row, 'Director');
+    const genre = getMov(row, 'Genre');
+    const imdb  = getMov(row, 'IMDB Rating');
+    const note  = getMov(row, 'Notes');
+
+    const rankClass = isStarRank(rank) ? 'card-rank stars' : 'card-rank';
+    const rankTitle = isStarRank(rank) ? ` title="${starLabel(rank)}"` : '';
+    const secondary = [year, dir, date].filter(Boolean).join(' · ');
+
+    out += `<div class="card">
+      <div class="card-header">
+        <div class="${rankClass}"${rankTitle}>${isStarRank(rank) ? renderStars(rank) : esc(rank)}</div>
+        <div class="card-body">
+          <div class="card-title">${esc(title)}</div>
+          ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
+          ${genre ? `<div class="card-genre">${esc(genre)}</div>` : ''}
+        </div>
+        ${imdb ? `<div class="card-imdb">★ ${esc(imdb)}</div>` : ''}
+      </div>
+      ${note ? `<div class="card-review">${esc(note)}</div>` : ''}
+    </div>`;
   }
   out += '</div>';
 
