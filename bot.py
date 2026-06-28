@@ -125,20 +125,17 @@ TV_WATCH_TAB = "TV Watch List"
 
 HELP_TEXT = (
     "<b>Movie List Maintainer</b>\n\n"
+    "/watched <code>&lt;title&gt; [| note [| rank]]</code> — Move from Watch List to Movies; adds directly if not on Watch List\n\n"
     "/addwatch <code>&lt;title&gt; [category]</code> — Add to Watch List\n"
     "  Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
-    "/rank <code>&lt;title&gt; &lt;rank&gt;</code> — Set rank in Movies; use <code>4stars</code> / <code>4.5stars</code> for star ratings\n\n"
-    "/watched <code>&lt;title&gt; [| note [| rank]]</code> — Remove from Watch List and add to Movies\n"
-    "  Rank: plain number (e.g. <code>42</code>) or star rating (e.g. <code>4stars</code>, <code>4.5stars</code>)\n"
-    "  If not in the Watch List, looks up on OMDb and adds directly to Movies\n\n"
-    "/history <code>[n]</code> — Show recent rank changes and watched movies (default 10, max 50)\n\n"
-    "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update the Notes field for a movie\n\n"
-    "/find <code>&lt;title&gt;</code> — Search all sheets for a movie\n\n"
+    "/rank <code>&lt;title&gt; | &lt;rank&gt;</code> — Set rank in Movies (<code>42</code>, <code>4stars</code>, <code>4.5stars</code>)\n\n"
+    "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes\n\n"
+    "/find <code>&lt;query&gt;</code> — Search all sheets\n\n"
     "/omdb <code>&lt;title&gt;</code> — Look up OMDb info without modifying any sheet\n\n"
-    "/watchlist <code>[category]</code> — Show the Watch List, optionally filtered by category\n\n"
-    "/random <code>[genre [| category]]</code> — Suggest a random movie from your Watch List\n"
-    "  Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
-    "/trend list — Show active rank trends (last 30 days)\n"
+    "/watchlist <code>[category]</code> — Show the Watch List\n\n"
+    "/random <code>[genre [| category]]</code> — Suggest a random Watch List movie\n\n"
+    "/history <code>[n]</code> — Show recent rank changes and watched movies (default 10)\n\n"
+    "/trend list — Show active rank trends\n"
     "/trend reset <code>&lt;title&gt;</code> — Clear the trend indicator for a movie\n\n"
     "/help — Show this message"
 )
@@ -696,19 +693,15 @@ async def cmd_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /rank <title> | <rank>")
         return
 
-    if "|" in text:
-        parts = text.split("|", 1)
-        title = parts[0].strip()
-        raw_value = parts[1].strip()
-    else:
-        words = text.split()
-        if len(words) < 2:
-            await update.message.reply_text("Usage: /rank <title> | <rank>")
-            return
-        raw_value = words[-1]
-        title = " ".join(words[:-1]).strip()
+    if "|" not in text:
+        await update.message.reply_text("Usage: /rank <title> | <rank>")
+        return
 
-    if not title:
+    parts = text.split("|", 1)
+    title = parts[0].strip()
+    raw_value = parts[1].strip()
+
+    if not title or not raw_value:
         await update.message.reply_text("Usage: /rank <title> | <rank>")
         return
 
