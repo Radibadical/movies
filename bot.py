@@ -66,7 +66,7 @@ HELP_TEXT = (
     "/addwatch <code>&lt;title&gt; [category]</code> — Add to Watch List\n"
     "  Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
     "/setorder <code>&lt;title&gt; &lt;rank&gt;</code> — Set Watch Order or Rank; use <code>4stars</code> / <code>4.5stars</code> for star ratings\n\n"
-    "/watched <code>&lt;title&gt; [| sheet [| note [| rank]]]</code> — Remove from Watch List; optionally move to a main sheet\n"
+    "/watched <code>&lt;title&gt; [| note [| rank]]</code> — Remove from Watch List and add to Movies\n"
     "  Rank: plain number (e.g. <code>42</code>) or star rating (e.g. <code>4stars</code>, <code>4.5stars</code>)\n"
     "  If not in the Watch List, looks up on OMDb and adds directly to the target sheet\n"
     "  Sheets: Movies, TV, Weird Movies, Documentaries, Horror/Halloween, Christmas\n\n"
@@ -734,37 +734,27 @@ async def cmd_setorder(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/watched <title> [| <sheet> [| <note> [| <rank>]]] — Remove from Watch List, optionally move."""
-    non_watch_sheets = [w for w in WORKSHEET_NAMES if WATCH_LIST_KEYWORD not in w]
+    """/watched <title> [| <note> [| <rank>]] — Remove from Watch List and add to Movies."""
     text = " ".join(context.args).strip()
 
     if not text:
         await update.message.reply_text(
-            "Usage: /watched <title> [| <sheet> [| <note> [| <rank>]]]\n"
-            f"Sheets: {', '.join(non_watch_sheets)}"
+            "Usage: /watched <title> [| <note> [| <rank>]]\n"
+            "Examples: /watched Chinatown\n"
+            "          /watched Chinatown | great ending | 12\n"
+            "          /watched Chinatown | | 4stars"
         )
         return
 
     parts = [p.strip() for p in text.split("|")]
     title = parts[0]
-    target_sheet = parts[1] if len(parts) > 1 else ""
-    note_text = parts[2] if len(parts) > 2 else ""
-    rank_str = parts[3] if len(parts) > 3 else ""
+    note_text = parts[1] if len(parts) > 1 else ""
+    rank_str = parts[2] if len(parts) > 2 else ""
+    target_sheet = "Movies"
 
     if not title:
         await update.message.reply_text("Please provide a movie title.")
         return
-
-    if target_sheet:
-        matched_sheet = next(
-            (w for w in non_watch_sheets if w.lower() == target_sheet.lower()), None
-        )
-        if not matched_sheet:
-            await update.message.reply_text(
-                f"Sheet '{target_sheet}' not recognised.\nAvailable: {', '.join(non_watch_sheets)}"
-            )
-            return
-        target_sheet = matched_sheet
 
     rank_value = ""
     rank_display = ""
