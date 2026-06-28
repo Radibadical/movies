@@ -624,7 +624,7 @@ function fmtDate(iso) {
 }
 
 async function fetchHistory() {
-  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&sheet=History`;
+  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=1974417523`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const parsed = parseCSV(await res.text());

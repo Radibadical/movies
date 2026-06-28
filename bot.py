@@ -247,6 +247,29 @@ def _parse_rank_input(s: str) -> tuple[str, str] | None:
     return (s, f"rank #{s}")
 
 
+def _renumber_ranks(ws) -> None:
+    """Reassign integer Rank values (1, 2, 3…) sequentially by current row order. Batch write."""
+    all_values = ws.get_all_values()
+    if len(all_values) < 2:
+        return
+    headers = all_values[0]
+    col_index = {h: i for i, h in enumerate(headers)}
+    if "Rank" not in col_index:
+        return
+    rank_col = col_index["Rank"]
+    counter = 1
+    cells = []
+    for row_i, row in enumerate(all_values[1:], start=2):
+        padded = row + [""] * max(0, len(headers) - len(row))
+        val = padded[rank_col].strip()
+        if val.isdigit():
+            if int(val) != counter:
+                cells.append(gspread.Cell(row_i, rank_col + 1, str(counter)))
+            counter += 1
+    if cells:
+        ws.update_cells(cells)
+
+
 def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str) -> bool:
     """Move a row to its correct sorted position after a rank change.
     Sort order: integer ranks ascending, then star ratings descending + alphabetical.
@@ -283,7 +306,7 @@ def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str
 
     row_data = (all_values[row_num - 1] + [""] * max(0, len(headers) - len(all_values[row_num - 1])))[:len(headers)]
     ws.delete_rows(row_num)
-    adjusted = target_insert - 1 if target_insert > row_num else target_insert
+    adjusted = target_insert
     ws.insert_row(row_data, adjusted)
     return True
 
@@ -833,14 +856,35 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
             headers = all_values[0] if all_values else MOVIE_LIST_COLUMNS
             col_index = {h: i for i, h in enumerate(headers)}
 
-            already_there = any(
-                (row + [""] * max(0, len(headers) - len(row)))[col_index["Title"]].strip().lower()
-                == canonical_title.lower()
-                for row in all_values[1:]
-                if "Title" in col_index
-            )
-            if already_there:
-                msg_lines.append(f"'{html(canonical_title)}' is already in {html(target_sheet)} — not added again.")
+            existing_row_num = None
+            if "Title" in col_index:
+                for i, row in enumerate(all_values[1:], start=2):
+                    padded = row + [""] * max(0, len(headers) - len(row))
+                    if padded[col_index["Title"]].strip().lower() == canonical_title.lower():
+                        existing_row_num = i
+                        break
+
+            if existing_row_num is not None:
+                existing_padded = (all_values[existing_row_num - 1] + [""] * max(0, len(headers) - len(all_values[existing_row_num - 1])))
+                updates = []
+                if "Last Watched" in col_index:
+                    target_ws.update_cell(existing_row_num, col_index["Last Watched"] + 1, datetime.date.today().isoformat())
+                    updates.append("Last Watched updated")
+                if note_text and "Notes" in col_index:
+                    target_ws.update_cell(existing_row_num, col_index["Notes"] + 1, note_text)
+                    updates.append("note updated")
+                if rank_value and "Rank" in col_index:
+                    old_rank = existing_padded[col_index["Rank"]].strip() if col_index["Rank"] < len(existing_padded) else ""
+                    target_ws.update_cell(existing_row_num, col_index["Rank"] + 1, rank_value)
+                    _reposition_by_rank(target_ws, existing_row_num, rank_value, canonical_title)
+                    _renumber_ranks(target_ws)
+                    updates.append(rank_display)
+                    if old_rank != rank_value:
+                        _append_log(ss, "Rank Changed", canonical_title, f"{target_sheet}: {old_rank or '(blank)'} → {rank_value}")
+                suffix = f" ({', '.join(updates)})" if updates else ""
+                msg_lines.append(f"Updated <b>{html(canonical_title)}</b> in {html(target_sheet)}{html(suffix)}.")
+                log_detail = f"rewatched in {target_sheet}" + (f" ({rank_display})" if rank_display else "")
+                _append_log(ss, "Watched", canonical_title, log_detail)
             else:
                 new_row = [""] * len(headers)
                 for field, value in saved_row_data.items():
