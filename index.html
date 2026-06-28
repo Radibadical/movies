@@ -638,10 +638,14 @@ async function fetchHistory() {
   const watchedRows = allRows.filter(r => (r[ci['Type']] || '') === 'Watched');
   const entries = watchedRows.slice(-HISTORY_LIMIT).reverse();
 
-  // Main list arrows: most recent rank change per title, numeric 1-200 only
+  // Main list arrows: most recent rank change per title, numeric 1-200 only, within 30 days
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 30);
   const changes = {};
   for (const row of allRows) {
     if ((row[ci['Type']] || '') !== 'Rank Changed') continue;
+    const rowDate = new Date(row[ci['Date']] || '');
+    if (isNaN(rowDate) || rowDate < cutoff) continue;
     const detail = row[ci['Detail']] || '';
     if (detail.includes('Watch List')) continue;
     const ai = detail.lastIndexOf('→');
