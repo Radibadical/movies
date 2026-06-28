@@ -112,7 +112,7 @@ Restart policy: `on-failure` with 10s delay.
 |---|---|
 | `/addwatch <title> [category]` | Add to Watch List (fetches OMDb data, records Date Added) |
 | `/setorder <title> <rank>` | Set Watch Order or Rank; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
-| `/watched <title> [| sheet [| note [| rank]]]` | Remove from Watch List; rank accepts same format as /setorder; falls back to OMDb if not in watch list; stamps Last Watched |
+| `/watched <title> [| note [| rank]]` | Remove from Watch List and add to Movies sheet; rank accepts same format as /setorder; falls back to OMDb if not in watch list; stamps Last Watched |
 | `/history [n]` | Show last n rank changes and watched events (default 10, max 50) |
 | `/note <title> | <note text>` | Add/update Notes field |
 | `/find <query>` | Search every tab and every column in the spreadsheet (not just Title) |
@@ -135,6 +135,10 @@ each result block.
 Draws only from the "Watch List" tab (not TV Watch List or other sheets). Genre argument
 is a case-insensitive substring match against the Genre column (e.g. `horror` matches
 "Horror, Thriller").
+
+### `/watched` syntax
+3-part pipe syntax: `title | note | rank`. Sheet is always Movies — no sheet parameter.
+Falls back to OMDb lookup if the title is not found in any Watch List.
 
 ### `/history` filtering
 Watch list rank changes (Watch Order updates) are excluded. Only "Rank Changed" events
