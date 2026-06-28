@@ -62,16 +62,6 @@ WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Ge
 LOG_TAB = "History"
 LOG_COLUMNS = ["Date", "Type", "Title", "Detail"]
 
-# Source watch list tabs → category name in merged sheet
-WATCH_LIST_TABS = {
-    "Watch List": "General",
-    "Weird Watch List": "Weird",
-    "Dudeist Watch List": "Dudeist",
-    "Horror Watch List": "Horror",
-    "Documentaries Watch List": "Documentary",
-    "Christmas Watch List": "Christmas",
-}
-
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
@@ -562,105 +552,6 @@ def display_changes(changes: list[dict], not_found: list[str]):
 
 
 # ---------------------------------------------------------------------------
-# Watch list merge
-# ---------------------------------------------------------------------------
-
-def merge_watch_lists(spreadsheet):
-    """Combine all WATCH_LIST_TABS into the 'Watch List' tab with a Category column.
-    Deletes the source tabs after merging. No-ops if only 'Watch List' exists."""
-    existing_titles = {ws.title for ws in spreadsheet.worksheets()}
-    source_tabs = [tab for tab in WATCH_LIST_TABS if tab in existing_titles]
-
-    if not source_tabs:
-        print("  No watch list tabs found — nothing to merge.")
-        return
-
-    if source_tabs == ["Watch List"]:
-        print("  Only 'Watch List' tab exists — no merge needed.")
-        return
-
-    print(f"\n{'='*65}")
-    print("  Merging watch list tabs:")
-    for tab in source_tabs:
-        print(f"    - {tab} → Category: {WATCH_LIST_TABS[tab]}")
-    print(f"{'='*65}\n")
-
-    answer = input("  Merge and delete source tabs? [y/N] ").strip().lower()
-    if answer != "y":
-        print("  Skipped merge.")
-        return
-
-    combined_rows = []
-    for tab_name in source_tabs:
-        category = WATCH_LIST_TABS[tab_name]
-        ws = spreadsheet.worksheet(tab_name)
-        all_values = ws.get_all_values()
-        if not all_values:
-            continue
-        headers = all_values[0]
-        rows = all_values[1:]
-
-        if "Title" not in headers:
-            print(f"  '{tab_name}' has no Title column — skipping.")
-            continue
-
-        col_index = {h: i for i, h in enumerate(headers)}
-
-        for row in rows:
-            row = row + [""] * max(0, len(headers) - len(row))
-            title = row[col_index.get("Title", -1)].strip() if "Title" in col_index else ""
-            if not title:
-                continue
-
-            new_row = {}
-            for col in WATCH_LIST_COLUMNS:
-                if col == "Category":
-                    # For the Watch List tab itself, rows may already have a
-                    # category set from a previous merge — preserve it.
-                    # For source tabs (Weird Watch List etc.) the col won't
-                    # exist, so fall back to the tab's default category.
-                    existing = row[col_index[col]].strip() if col in col_index else ""
-                    new_row[col] = existing if existing else category
-                elif col in col_index:
-                    new_row[col] = row[col_index[col]]
-                else:
-                    new_row[col] = ""
-            combined_rows.append(new_row)
-
-    if not combined_rows:
-        print("  No rows to merge.")
-        return
-
-    print(f"  Combined {len(combined_rows)} rows from {len(source_tabs)} tab(s).")
-
-    # Build data to write
-    new_data = [WATCH_LIST_COLUMNS] + [
-        [row[col] for col in WATCH_LIST_COLUMNS] for row in combined_rows
-    ]
-
-    # Write to "Watch List" tab (create if missing)
-    if "Watch List" in existing_titles:
-        target_ws = spreadsheet.worksheet("Watch List")
-        target_ws.clear()
-        target_ws.update(new_data, "A1")
-    else:
-        target_ws = spreadsheet.add_worksheet("Watch List", rows=max(len(new_data) + 10, 100), cols=len(WATCH_LIST_COLUMNS))
-        target_ws.update(new_data, "A1")
-
-    print(f"  Wrote {len(combined_rows)} rows to 'Watch List'.")
-
-    # Delete source tabs (except Watch List itself)
-    for tab_name in source_tabs:
-        if tab_name == "Watch List":
-            continue
-        ws = spreadsheet.worksheet(tab_name)
-        spreadsheet.del_worksheet(ws)
-        print(f"  Deleted tab '{tab_name}'.")
-
-    print("  Merge complete.\n")
-
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -686,12 +577,6 @@ def main():
 
     print(f"Connecting to '{SHEET_NAME}'...")
     spreadsheet = open_spreadsheet(CREDENTIALS_FILE, SHEET_NAME)
-
-    # Merge individual watch list tabs into one if multiple exist
-    existing_titles = {ws.title for ws in spreadsheet.worksheets()}
-    watch_tabs_present = [tab for tab in WATCH_LIST_TABS if tab in existing_titles]
-    if len(watch_tabs_present) > 1:
-        merge_watch_lists(spreadsheet)
 
     for worksheet_name in WORKSHEET_NAMES:
         print(f"\n{'='*65}")
