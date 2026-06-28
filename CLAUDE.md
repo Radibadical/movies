@@ -262,8 +262,8 @@ Sensitive files already ignored: `.env`, `credentials.json`, `__pycache__/`,
 
 ## Web UI
 
-**Branch:** `feature/web-ui`
-**File:** `index.html` (repo root on that branch)
+**Branch:** `main`
+**File:** `index.html` (repo root)
 **Live URL:** https://radibadical.com/movies/
 
 A single-file static page deployed via GitHub Pages. No backend — reads directly
@@ -286,11 +286,9 @@ This exposes the spreadsheet ID in the source but does not expose your email add
 
 ### Updating the page
 
-Edit `index.html` on the `feature/web-ui` branch and push. GitHub Pages redeploys
-automatically within ~1 minute.
+Edit `index.html` on `main` and push. GitHub Pages redeploys automatically within ~1 minute.
 
 ```bash
-git checkout feature/web-ui
 # edit index.html
 git add index.html && git commit -m "..." && git push
 ```
@@ -324,15 +322,12 @@ The page currently shows only the Movies sheet. To add other sheets:
 2. Add an entry to the `PAGES` object with a rank filter function
 3. Fetch the additional sheet and merge or handle separately
 
-### Branch structure
+### Header
 
-| Branch | Purpose |
-|---|---|
-| `main` | Bot-only code (`bot.py`, `main.py`) — stable |
-| `feature/web-ui` | Web UI (`index.html`) — also contains all bot code |
-
-To abandon the web UI: delete the `feature/web-ui` branch. `main` is unaffected.
-To merge it in when ready: `git checkout main && git merge feature/web-ui`.
+Title displays as "Radibadical / Top 200 Movies" with a "← radibadical" back link
+to the landing page. Star ratings use a CSS half-star technique: `✮` is replaced
+with `<span class="half-star">★</span>` — a grey star with the left 50% overlaid
+in gold via `::before`.
 
 ### Domain and hosting setup
 
@@ -343,10 +338,10 @@ Custom domain: `radibadical.com` — registered on Porkbun, DNS via Cloudflare.
 | `Radibadical/radibadical.github.io` | `radibadical.com` (root) |
 | `Radibadical/movies` | `radibadical.com/movies/` |
 
-The `radibadical.github.io` repo holds the CNAME file (`radibadical.com`) and a
-meta-refresh `index.html` that redirects the root to `/movies/`. Future projects
-get their own repos and automatically appear at `radibadical.com/<reponame>` with
-no extra DNS configuration.
+The `radibadical.github.io` repo is a full landing page with cards linking to
+each project. Future projects get their own repos and automatically appear at
+`radibadical.com/<reponame>` with no extra DNS configuration. Subpages within
+`radibadical.github.io` (e.g. `spotify/index.html`) serve at `radibadical.com/spotify/`.
 
 DNS records on Porkbun:
 - **ALIAS** `radibadical.com` → `radibadical.github.io`
