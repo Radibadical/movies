@@ -690,22 +690,35 @@ async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/rank <title> <rank> — Set rank in Movies."""
-    if not context.args or len(context.args) < 2:
-        await update.message.reply_text("Usage: /rank <title> <rank>")
+    """/rank <title> | <rank> — Set rank in Movies."""
+    text = " ".join(context.args).strip()
+    if not text:
+        await update.message.reply_text("Usage: /rank <title> | <rank>")
         return
 
-    args = list(context.args)
-    raw_value = args[-1]
+    if "|" in text:
+        parts = text.split("|", 1)
+        title = parts[0].strip()
+        raw_value = parts[1].strip()
+    else:
+        words = text.split()
+        if len(words) < 2:
+            await update.message.reply_text("Usage: /rank <title> | <rank>")
+            return
+        raw_value = words[-1]
+        title = " ".join(words[:-1]).strip()
+
+    if not title:
+        await update.message.reply_text("Usage: /rank <title> | <rank>")
+        return
+
     parsed_value = _parse_rank_input(raw_value)
     if parsed_value is None:
         await update.message.reply_text(
-            "The last argument must be a number (rank) or a star rating with the 'stars' suffix.\n"
-            "Examples: /rank Alien 42  or  /rank Alien 4stars  or  /rank Alien 4.5stars"
+            "The rank must be a number or a star rating with the 'stars' suffix.\n"
+            "Examples: /rank Alien | 42  or  /rank Alien | 4stars  or  /rank Alien | 4.5stars"
         )
         return
-
-    title = " ".join(args[:-1]).strip()
 
     try:
         ss = get_spreadsheet()

@@ -646,13 +646,22 @@ async function fetchHistory() {
   const watchedRows = allRows.filter(r => (r[ci['Type']] || '') === 'Watched');
   const entries = watchedRows.slice(-HISTORY_LIMIT).reverse();
 
-  // Main list arrows: most recent rank change per title, numeric 1-200 only, within 30 days
+  // Main list arrows: most recent rank change per title, numeric 1-200 only, within 30 days.
+  // Process history in row order so a Rank Changed that follows a Trend Reset shows an arrow.
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 30);
   const trends = JSON.parse(localStorage.getItem('movieTrends') || '{}');
   const changes = {};
   for (const row of allRows) {
-    if ((row[ci['Type']] || '') !== 'Rank Changed') continue;
+    const type = row[ci['Type']] || '';
+    const titleKey = (row[ci['Title']] || '').toLowerCase();
+
+    if (type === 'Trend Reset') {
+      delete changes[titleKey];
+      continue;
+    }
+
+    if (type !== 'Rank Changed') continue;
     const rowDate = new Date(row[ci['Date']] || '');
     if (isNaN(rowDate) || rowDate < cutoff) continue;
     const detail = row[ci['Detail']] || '';
@@ -667,22 +676,8 @@ async function fetchHistory() {
     const oldStr = before.split(/[\s:]+/).pop();
     const oldN = parseInt(oldStr, 10);
     if (!Number.isFinite(oldN) || oldN === newN) continue;
-    const titleKey = (row[ci['Title']] || '').toLowerCase();
     if (trends[titleKey] === newN) continue;
     changes[titleKey] = { oldN, newN, changeDate: row[ci['Date']] || '' };
-  }
-
-  // Suppress trends reset via bot (/trend reset logs a "Trend Reset" event)
-  const resets = {};
-  for (const row of allRows) {
-    if ((row[ci['Type']] || '') !== 'Trend Reset') continue;
-    const titleKey = (row[ci['Title']] || '').toLowerCase();
-    resets[titleKey] = row[ci['Date']] || '';
-  }
-  for (const titleKey of Object.keys(resets)) {
-    if (changes[titleKey] && resets[titleKey] >= changes[titleKey].changeDate) {
-      delete changes[titleKey];
-    }
   }
 
   return { entries, total: watchedRows.length, ci, rankChanges: changes };
