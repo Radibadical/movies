@@ -20,7 +20,6 @@ from main import (
     SHEET_NAME,
     WATCH_LIST_COLUMNS,
     WATCH_LIST_KEYWORD,
-    WATCH_LIST_TABS,
     WORKSHEET_NAMES,
     OmdbInvalidKey,
     OmdbQuotaExceeded,
