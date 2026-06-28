@@ -361,7 +361,6 @@ def _enforce_200_limit(ss, ws) -> list[str]:
         old_rank = bump_padded[rank_col].strip()
         star_rank = "★ ★ ★ ★ ★"
 
-        ws.update_cell(bump_row_num, rank_col + 1, star_rank)
         _reposition_by_rank(ws, bump_row_num, star_rank, bump_title)
         _append_log(ss, "Rank Changed", bump_title, f"Movies: {old_rank} → {star_rank} (list full)")
         bumped.append(bump_title)
@@ -369,12 +368,12 @@ def _enforce_200_limit(ss, ws) -> list[str]:
     return bumped
 
 
-def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str) -> bool:
-    """Move a row to its correct sorted position after a rank change.
-    Sort order: integer ranks ascending, then star ratings descending + alphabetical.
-    Returns True if the row was moved."""
+def _reposition_by_rank(ws, row_num: int, new_rank: str, canonical_title: str) -> bool:
+    """Set a row's Rank to new_rank and move it to its correct sorted position.
+    Reads the current rank from the sheet — callers must NOT pre-write the rank cell.
+    Returns True if the row was physically moved."""
     all_values = ws.get_all_values()
-    if not all_values:
+    if not all_values or row_num < 2 or row_num > len(all_values):
         return False
 
     headers = all_values[0]
@@ -385,7 +384,22 @@ def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str
     rank_col = col_index["Rank"]
     title_col = col_index.get("Title", -1)
 
-    new_key = _rank_sort_key_with_title(stored_rank, canonical_title)
+    current_row = all_values[row_num - 1]
+    padded_current = (current_row + [""] * max(0, len(headers) - len(current_row)))[:len(headers)]
+    old_rank = padded_current[rank_col].strip()
+
+    if old_rank == new_rank:
+        return False
+
+    # Build row data with the new rank already applied
+    new_row_data = list(padded_current)
+    new_row_data[rank_col] = new_rank
+
+    is_integer_rank = new_rank.strip().isdigit()
+    if is_integer_rank:
+        new_key = _rank_sort_key(new_rank)
+    else:
+        new_key = _rank_sort_key_with_title(new_rank, canonical_title)
 
     # Find the first row (skipping current) whose sort key >= new_key
     target_insert = len(all_values) + 1
@@ -395,23 +409,24 @@ def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str
         padded = row + [""] * max(0, len(headers) - len(row))
         r = padded[rank_col].strip()
         t = padded[title_col].strip() if title_col >= 0 else ""
-        if r and _rank_sort_key_with_title(r, t) >= new_key:
+        row_key = _rank_sort_key(r) if is_integer_rank else _rank_sort_key_with_title(r, t)
+        if r and row_key >= new_key:
             target_insert = i
             break
 
-    # Already in the right place?
-    if target_insert in (row_num, row_num + 1):
-        return False
-
-    row_data = (all_values[row_num - 1] + [""] * max(0, len(headers) - len(all_values[row_num - 1])))[:len(headers)]
-    ws.delete_rows(row_num)
-    # For integer ranks we push the target row down (insert after it); for star ratings we
-    # insert before the target to maintain alphabetical order within each star level.
-    if not stored_rank.strip().isdigit() and target_insert > row_num:
+    # Compute the adjusted insert index after the deletion shifts rows
+    if not is_integer_rank and target_insert > row_num:
         adjusted = target_insert - 1
     else:
         adjusted = target_insert
-    ws.insert_row(row_data, adjusted)
+
+    # Row is already in the correct sorted position — update rank cell in place
+    if adjusted == row_num:
+        ws.update_cell(row_num, rank_col + 1, new_rank)
+        return False
+
+    ws.delete_rows(row_num)
+    ws.insert_row(new_row_data, adjusted)
     return True
 
 
@@ -724,7 +739,6 @@ async def cmd_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     row_num, old_val, canonical = match
     sheet_value, value_display = parsed_value
-    ws.update_cell(row_num, col_index["Rank"] + 1, sheet_value)
     _reposition_by_rank(ws, row_num, sheet_value, canonical)
     _renumber_ranks(ws)
     bumped: list[str] = []
@@ -859,7 +873,6 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 bumped_overflow: list[str] = []
                 if rank_value and "Rank" in col_index:
                     old_rank = existing_padded[col_index["Rank"]].strip() if col_index["Rank"] < len(existing_padded) else ""
-                    target_ws.update_cell(existing_row_num, col_index["Rank"] + 1, rank_value)
                     _reposition_by_rank(target_ws, existing_row_num, rank_value, canonical_title)
                     _renumber_ranks(target_ws)
                     if rank_value.isdigit():
@@ -888,12 +901,14 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Insert at correct sort position: numbered ranks first, then star ratings desc + alpha
                 insert_index = len(all_values) + 1
                 if rank_value and "Rank" in col_index:
-                    new_key = _rank_sort_key_with_title(rank_value, canonical_title)
+                    is_int = rank_value.strip().isdigit()
+                    new_key = _rank_sort_key(rank_value) if is_int else _rank_sort_key_with_title(rank_value, canonical_title)
                     for i, row in enumerate(all_values[1:], start=2):
                         padded = row + [""] * max(0, len(headers) - len(row))
                         r = padded[col_index["Rank"]].strip()
                         t = padded[col_index["Title"]].strip() if "Title" in col_index else ""
-                        if r and _rank_sort_key_with_title(r, t) >= new_key:
+                        row_key = _rank_sort_key(r) if is_int else _rank_sort_key_with_title(r, t)
+                        if r and row_key >= new_key:
                             insert_index = i
                             break
 
