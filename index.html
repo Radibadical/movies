@@ -292,46 +292,11 @@
 
     @media (max-width: 699px) {
       .table-wrap { display: none; }
-      header, .toolbar, .page-nav, .history-section { padding-left: 1rem; padding-right: 1rem; }
+      header, .toolbar, .page-nav { padding-left: 1rem; padding-right: 1rem; }
       .search { width: 100%; }
     }
 
-    /* ── History feed ── */
-    .history-section {
-      border-bottom: 1px solid #21262d;
-      padding: 0.875rem 2rem;
-    }
-    .history-header {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 0.5rem;
-    }
-    .history-label {
-      font-size: 0.7rem;
-      font-weight: 600;
-      color: #484f58;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .history-count { font-size: 0.7rem; color: #484f58; }
-    .history-feed { display: flex; flex-direction: column; gap: 0.2rem; }
-    .history-entry {
-      display: flex;
-      align-items: baseline;
-      gap: 0.5rem;
-      font-size: 0.8rem;
-      line-height: 1.6;
-      flex-wrap: wrap;
-    }
-    .h-date {
-      color: #484f58;
-      font-size: 0.7rem;
-      white-space: nowrap;
-      min-width: 5.5rem;
-      font-variant-numeric: tabular-nums;
-      flex-shrink: 0;
-    }
+    /* ── History badges ── */
     .h-badge {
       font-size: 0.65rem;
       font-weight: 600;
@@ -339,13 +304,11 @@
       padding: 0.1rem 0.35rem;
       border-radius: 3px;
       white-space: nowrap;
-      flex-shrink: 0;
     }
     .h-badge-watched { background: #1a3a2a; color: #3fb950; }
     .h-badge-ranked  { background: #1a2a3a; color: #58a6ff; }
-    .h-title { color: #e6edf3; font-weight: 600; }
-    .h-sep   { color: #484f58; }
-    .h-detail { color: #8b949e; }
+    .h-arrow-up   { color: #3fb950; font-weight: 700; }
+    .h-arrow-down { color: #f85149; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -362,20 +325,11 @@
   </div>
 </header>
 
-<section class="history-section">
-  <div class="history-header">
-    <span class="history-label">Recent Activity</span>
-    <span class="history-count" id="history-count"></span>
-  </div>
-  <div class="history-feed" id="history-feed">
-    <div class="loading"><div class="spinner"></div></div>
-  </div>
-</section>
-
 <nav class="page-nav">
   <button class="page-tab" data-page="top100">1–100</button>
   <button class="page-tab" data-page="top200">101–200</button>
   <button class="page-tab" data-page="starred">★ Rated</button>
+  <button class="page-tab" data-page="history">Recently Watched</button>
 </nav>
 
 <div class="toolbar">
@@ -398,11 +352,13 @@ const PAGES = {
   top100:  r => { const n = parseInt(r, 10); return Number.isInteger(n) && n >= 1   && n <= 100; },
   top200:  r => { const n = parseInt(r, 10); return Number.isInteger(n) && n >= 101 && n <= 200; },
   starred: r => r.includes('★') || r.includes('✮'),
+  history: () => false, // rendered separately
 };
 
 // ── State ────────────────────────────────────────────────────────────────────
-let cache      = null;
-let query      = '';
+let cache        = null;
+let historyCache = null;
+let query        = '';
 let activePage = 'top100';
 
 // ── CSV parser ───────────────────────────────────────────────────────────────
@@ -597,23 +553,34 @@ function setPage(pageId) {
   document.querySelectorAll('.page-tab').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.page === pageId)
   );
-  if (cache) render(cache);
+  const isHistory = pageId === 'history';
+  document.querySelector('.toolbar').style.display = isHistory ? 'none' : '';
+  if (isHistory) {
+    renderHistoryPage();
+  } else if (cache) {
+    render(cache);
+  }
 }
 
 // ── Load ─────────────────────────────────────────────────────────────────────
 async function load() {
-  document.getElementById('content').innerHTML =
-    `<div class="loading"><div class="spinner"></div>Loading…</div>`;
-  try {
-    render(await fetchMovies());
-  } catch (err) {
+  if (activePage !== 'history') {
     document.getElementById('content').innerHTML =
-      `<div class="empty">${esc(err.message)}</div>`;
+      `<div class="loading"><div class="spinner"></div>Loading…</div>`;
+  }
+  try {
+    const data = await fetchMovies();
+    if (activePage !== 'history') render(data);
+  } catch (err) {
+    if (activePage !== 'history') {
+      document.getElementById('content').innerHTML =
+        `<div class="empty">${esc(err.message)}</div>`;
+    }
   }
 }
 
 // ── History ───────────────────────────────────────────────────────────────────
-const HISTORY_LIMIT = 20;
+const HISTORY_LIMIT = 30;
 
 function historyVisible(row, ci) {
   const type = row[ci['Type']] || '';
@@ -632,12 +599,26 @@ function fmtDate(iso) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function rankArrow(detail) {
+  const arrow = detail.lastIndexOf('→');
+  if (arrow === -1) return '';
+  const before = detail.slice(0, arrow).trim();
+  const oldStr = before.split(/[\s:]+/).pop();
+  const newStr = detail.slice(arrow + 1).trim();
+  const oldN = parseInt(oldStr, 10), newN = parseInt(newStr, 10);
+  if (!Number.isFinite(oldN) || !Number.isFinite(newN) || oldN === newN) return '';
+  const delta = Math.abs(newN - oldN);
+  return newN < oldN
+    ? `<span class="h-arrow-up">↑${delta}</span>`
+    : `<span class="h-arrow-down">↓${delta}</span>`;
+}
+
 async function fetchHistory() {
   const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&sheet=History`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const parsed = parseCSV(await res.text());
-  if (parsed.length < 2) return { entries: [], total: 0 };
+  if (parsed.length < 2) return { entries: [], total: 0, ci: {} };
   const cols = parsed[0].map(c => c.trim());
   const ci = {};
   cols.forEach((c, i) => { if (c) ci[c] = i; });
@@ -648,38 +629,79 @@ async function fetchHistory() {
   return { entries, total: visible.length, ci };
 }
 
-function renderHistory({ entries, total, ci }) {
-  document.getElementById('history-count').textContent =
-    total ? `last ${entries.length} of ${total}` : '';
-  if (!entries.length) {
-    document.getElementById('history-feed').innerHTML = '<div class="empty">No history yet.</div>';
-    return;
-  }
-  let html = '';
+function buildHistoryContent({ entries, total, ci }) {
+  if (!entries.length) return '<div class="empty">No history yet.</div>';
+
+  const countLine = total > HISTORY_LIMIT
+    ? `<div class="count" style="padding:0.5rem 2rem">Last ${entries.length} of ${total} entries</div>` : '';
+
+  let out = countLine + '<div class="table-wrap"><table>' +
+    '<thead><tr>' +
+    '<th class="th-watched">Date</th>' +
+    '<th style="width:6rem">Type</th>' +
+    '<th class="th-title">Title</th>' +
+    '<th>Detail</th>' +
+    '</tr></thead><tbody>';
+
   for (const row of entries) {
     const date   = fmtDate(row[ci['Date']]   || '');
     const type   = row[ci['Type']]            || '';
     const title  = esc(row[ci['Title']]       || '');
-    const detail = esc(row[ci['Detail']]      || '');
-    const badgeClass = type === 'Watched' ? 'h-badge h-badge-watched' : 'h-badge h-badge-ranked';
-    const badgeText  = type === 'Watched' ? 'WATCHED' : 'RANKED';
-    html += `<div class="history-entry">` +
-      `<span class="h-date">${esc(date)}</span>` +
-      `<span class="${badgeClass}">${badgeText}</span>` +
-      `<span class="h-title">${title}</span>` +
-      `<span class="h-sep">&mdash;</span>` +
-      `<span class="h-detail">${detail}</span>` +
-      `</div>`;
+    const rawDetail = row[ci['Detail']]       || '';
+    const detail = esc(rawDetail);
+    const isWatched = type === 'Watched';
+    const badgeClass = isWatched ? 'h-badge h-badge-watched' : 'h-badge h-badge-ranked';
+    const badgeText  = isWatched ? 'WATCHED' : 'RANKED';
+    const arrow  = isWatched ? '' : ' ' + rankArrow(rawDetail);
+    out += `<tr class="main-row">` +
+      `<td class="col-watched">${esc(date)}</td>` +
+      `<td><span class="${badgeClass}">${badgeText}</span>${arrow}</td>` +
+      `<td class="col-title">${title}</td>` +
+      `<td class="col-director">${detail}</td>` +
+      `</tr>`;
   }
-  document.getElementById('history-feed').innerHTML = html;
+  out += '</tbody></table></div>';
+
+  out += '<div class="cards">';
+  for (const row of entries) {
+    const date   = fmtDate(row[ci['Date']]   || '');
+    const type   = row[ci['Type']]            || '';
+    const title  = esc(row[ci['Title']]       || '');
+    const rawDetail = row[ci['Detail']]       || '';
+    const detail = esc(rawDetail);
+    const isWatched = type === 'Watched';
+    const badgeClass = isWatched ? 'h-badge h-badge-watched' : 'h-badge h-badge-ranked';
+    const badgeText  = isWatched ? 'WATCHED' : 'RANKED';
+    const arrow  = isWatched ? '' : ' ' + rankArrow(rawDetail);
+    out += `<div class="card"><div class="card-header"><div class="card-body">` +
+      `<div class="card-title">${title}</div>` +
+      `<div class="card-secondary">${esc(date)}&nbsp;&nbsp;<span class="${badgeClass}">${badgeText}</span>${arrow}</div>` +
+      `${detail ? `<div class="card-genre" style="color:#8b949e;font-size:0.75rem;margin-top:0.2rem">${detail}</div>` : ''}` +
+      `</div></div></div>`;
+  }
+  out += '</div>';
+
+  return out;
+}
+
+function renderHistoryPage() {
+  if (!historyCache) {
+    document.getElementById('content').innerHTML =
+      `<div class="loading"><div class="spinner"></div>Loading…</div>`;
+    return;
+  }
+  document.getElementById('content').innerHTML = buildHistoryContent(historyCache);
 }
 
 async function loadHistory() {
   try {
-    renderHistory(await fetchHistory());
+    historyCache = await fetchHistory();
+    if (activePage === 'history') renderHistoryPage();
   } catch (err) {
-    document.getElementById('history-feed').innerHTML =
-      `<div class="empty">${esc(err.message)}</div>`;
+    if (activePage === 'history') {
+      document.getElementById('content').innerHTML =
+        `<div class="empty">${esc(err.message)}</div>`;
+    }
   }
 }
 
