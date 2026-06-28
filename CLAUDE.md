@@ -213,12 +213,35 @@ Input disambiguation: plain number = numeric rank; `Nstars` or `N.5stars` = star
 ### Row repositioning after rank change
 
 `_reposition_by_rank(ws, row_num, stored_rank, canonical_title) -> bool` (bot.py):
-- Called by `/setorder` for non-watch-list sheets after updating the rank cell.
+- Called by `/setorder` and `/watched` for non-watch-list sheets after updating the rank cell.
 - Re-reads all sheet values (capturing the already-updated rank and all other fields).
 - Finds the first row (skipping current) whose sort key ≥ new key; deletes current
   row and re-inserts at that position (offset adjusted for the deletion).
 - Sort key: `(0, int_rank, "")` for integers; `(1, -stars, title_lower)` for star ratings.
 - Returns `False` (no-op) if the row is already in the correct position.
+
+**Star vs. integer insertion direction:** Integer rank moves insert AFTER the target row
+(pushing it to a lower rank). Star rating moves insert BEFORE the target row (to maintain
+alphabetical order within the same star level). The branch:
+
+```python
+if not stored_rank.strip().isdigit() and target_insert > row_num:
+    adjusted = target_insert - 1
+else:
+    adjusted = target_insert
+```
+
+### 200-movie limit enforcement
+
+`_enforce_200_limit(ss, ws) -> list[str]` (bot.py):
+- Called after `_renumber_ranks` in BOTH the new-movie path and existing-movie path of
+  `cmd_watched`, but only when the rank being assigned is an integer.
+- Loops (up to 10 iterations) re-reading the sheet each time; if there are >200 integer-
+  ranked rows, bumps `int_rows[-1]` (highest integer rank) to `★ ★ ★ ★ ★`, repositions
+  it alphabetically in the star section, and logs the change.
+- Returns list of bumped title strings (empty if no overflow).
+- Bot reply for each overflow: a separate `msg_lines` entry —
+  `"List full (200) — <b>{title}</b> moved to ★★★★★."` — not embedded in the update suffix.
 
 ### History log
 
@@ -325,6 +348,34 @@ The page currently shows only the Movies sheet. To add other sheets:
 1. Add a new `<button class="page-tab">` in the nav HTML
 2. Add an entry to the `PAGES` object with a rank filter function
 3. Fetch the additional sheet and merge or handle separately
+
+### Recently Watched tab
+
+The "Recently Watched" tab shows filtered History entries (Type = "Watched") enriched
+with full movie details from the already-loaded Movies CSV cache.
+
+- `buildHistoryContent` builds a `movieLookup` dict keyed by lowercase title from the
+  `cache` object, then joins each history row to pull movie fields.
+- Columns shown: Date Watched, Rank, Title, Year, Director, Country, Genre, IMDB Rating,
+  Metascore. Notes appear as a sub-row (desktop) or inline (mobile cards).
+- "Type" and "Detail" columns from the History sheet are not shown in this view.
+- Mobile card layout matches the main movie list, with watch date appended to the
+  secondary info line.
+
+### CSS style values (index.html)
+
+Rank and title sizes are matched to avoid visual imbalance:
+
+| Class | font-size | color |
+|---|---|---|
+| `.col-rank` | 1.125rem | `#a07820` (brand gold) |
+| `.col-rank.stars` | 1.125rem | `#d4a017` |
+| `.col-title` | 1.125rem | `#e6edf3` |
+| `.card-rank` | 1.25rem | `#a07820` (brand gold) |
+| `.card-rank.stars` | 1.25rem | `#d4a017` |
+| `.card-title` | 1.25rem | `#e6edf3` |
+
+Brand gold `#a07820` matches the "Radibadical" byline color in the header.
 
 ### Header
 

@@ -270,6 +270,43 @@ def _renumber_ranks(ws) -> None:
         ws.update_cells(cells)
 
 
+def _enforce_200_limit(ss, ws) -> list[str]:
+    """Ensure at most 200 integer-ranked rows exist.  Bumps any excess (highest ranks first)
+    to ★★★★★.  Re-reads the sheet each iteration so row numbers stay accurate after moves.
+    Returns a list of bumped titles (empty if no overflow)."""
+    bumped: list[str] = []
+    for _ in range(10):  # safety cap
+        all_values = ws.get_all_values()
+        if not all_values:
+            break
+        headers = all_values[0]
+        col_index = {h: idx for idx, h in enumerate(headers)}
+        rank_col = col_index.get("Rank", 0)
+        title_col = col_index.get("Title", 1)
+
+        int_rows: list[tuple[int, list]] = []
+        for i, row in enumerate(all_values[1:], start=2):
+            padded = row + [""] * max(0, len(headers) - len(row))
+            if padded[rank_col].strip().isdigit():
+                int_rows.append((i, padded))
+
+        if len(int_rows) <= 200:
+            break
+
+        # Bump the last integer-ranked row (highest rank number)
+        bump_row_num, bump_padded = int_rows[-1]
+        bump_title = bump_padded[title_col].strip()
+        old_rank = bump_padded[rank_col].strip()
+        star_rank = "★ ★ ★ ★ ★"
+
+        ws.update_cell(bump_row_num, rank_col + 1, star_rank)
+        _reposition_by_rank(ws, bump_row_num, star_rank, bump_title)
+        _append_log(ss, "Rank Changed", bump_title, f"Movies: {old_rank} → {star_rank} (list full)")
+        bumped.append(bump_title)
+
+    return bumped
+
+
 def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str) -> bool:
     """Move a row to its correct sorted position after a rank change.
     Sort order: integer ranks ascending, then star ratings descending + alphabetical.
@@ -306,7 +343,12 @@ def _reposition_by_rank(ws, row_num: int, stored_rank: str, canonical_title: str
 
     row_data = (all_values[row_num - 1] + [""] * max(0, len(headers) - len(all_values[row_num - 1])))[:len(headers)]
     ws.delete_rows(row_num)
-    adjusted = target_insert
+    # For integer ranks we push the target row down (insert after it); for star ratings we
+    # insert before the target to maintain alphabetical order within each star level.
+    if not stored_rank.strip().isdigit() and target_insert > row_num:
+        adjusted = target_insert - 1
+    else:
+        adjusted = target_insert
     ws.insert_row(row_data, adjusted)
     return True
 
@@ -482,7 +524,7 @@ async def cmd_watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if category_filter and category.lower() != category_filter:
             continue
         order = padded[col_index["Watch Order"]].strip() if "Watch Order" in col_index else ""
-        line = f"{order}. {html(title)}" if order else f"- {html(title)}"
+        line = f"{html(order)}. {html(title)}" if order else f"- {html(title)}"
         if category and not category_filter:
             line += f" [{html(category)}]"
         lines.append(line)
@@ -873,16 +915,21 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if note_text and "Notes" in col_index:
                     target_ws.update_cell(existing_row_num, col_index["Notes"] + 1, note_text)
                     updates.append("note updated")
+                bumped_overflow: list[str] = []
                 if rank_value and "Rank" in col_index:
                     old_rank = existing_padded[col_index["Rank"]].strip() if col_index["Rank"] < len(existing_padded) else ""
                     target_ws.update_cell(existing_row_num, col_index["Rank"] + 1, rank_value)
                     _reposition_by_rank(target_ws, existing_row_num, rank_value, canonical_title)
                     _renumber_ranks(target_ws)
+                    if rank_value.isdigit():
+                        bumped_overflow = _enforce_200_limit(ss, target_ws)
                     updates.append(rank_display)
                     if old_rank != rank_value:
                         _append_log(ss, "Rank Changed", canonical_title, f"{target_sheet}: {old_rank or '(blank)'} → {rank_value}")
                 suffix = f" ({', '.join(updates)})" if updates else ""
                 msg_lines.append(f"Updated <b>{html(canonical_title)}</b> in {html(target_sheet)}{html(suffix)}.")
+                for bt in bumped_overflow:
+                    msg_lines.append(f"List full (200) — <b>{html(bt)}</b> moved to ★★★★★.")
                 log_detail = f"rewatched in {target_sheet}" + (f" ({rank_display})" if rank_display else "")
                 _append_log(ss, "Watched", canonical_title, log_detail)
             else:
@@ -910,6 +957,10 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             break
 
                 target_ws.insert_row(new_row, insert_index)
+                bumped: list[str] = []
+                if rank_value and rank_value.isdigit():
+                    _renumber_ranks(target_ws)
+                    bumped = _enforce_200_limit(ss, target_ws)
                 parts_added = []
                 if rank_display:
                     parts_added.append(rank_display)
@@ -917,6 +968,8 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parts_added.append("with note")
                 suffix = " (" + ", ".join(parts_added) + ")" if parts_added else ""
                 msg_lines.append(f"Added to <b>{html(target_sheet)}</b>{html(suffix)}.")
+                for bt in bumped:
+                    msg_lines.append(f"List full (200) — <b>{html(bt)}</b> moved to ★★★★★.")
                 from_label = ", ".join(removed_from) if removed_from else "OMDb"
                 log_detail = f"{from_label} → {target_sheet}" + (f" ({rank_display})" if rank_display else "")
                 _append_log(ss, "Watched", canonical_title, log_detail)
