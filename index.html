@@ -17,7 +17,20 @@
     header {
       padding: 1.25rem 2rem;
       border-bottom: 1px solid #21262d;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
     }
+    .back {
+      color: #8b949e;
+      text-decoration: none;
+      font-size: 0.8rem;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+      transition: color 0.15s;
+    }
+    .back:hover { color: #e6edf3; }
     .site-title {
       display: flex;
       align-items: center;
@@ -286,6 +299,7 @@
 <body>
 
 <header>
+  <a class="back" href="/">&#8592; radibadical</a>
   <div class="site-title">
     <span class="title-rule"></span>
     <div class="title-text">
