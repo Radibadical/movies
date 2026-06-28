@@ -2,6 +2,7 @@
 """Movie List Maintainer — Telegram bot interface."""
 
 import datetime
+import json
 import logging
 import os
 import random
@@ -106,17 +107,24 @@ log = logging.getLogger(__name__)
 # Category aliases for /addwatch
 # ---------------------------------------------------------------------------
 
-CATEGORY_ALIASES: dict[str, str] = {
-    "general": "General",
-    "movies": "General",
-    "weird": "Weird",
-    "dudeist": "Dudeist",
-    "horror": "Horror",
-    "documentary": "Documentary",
-    "documentaries": "Documentary",
-    "christmas": "Christmas",
-    "xmas": "Christmas",
-}
+TAGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tags.json")
+
+
+def _load_tags() -> list[str]:
+    try:
+        with open(TAGS_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return ["Christmas", "Dudeist", "Guilty Pleasure", "So Bad It's Good", "WTF", "Weird"]
+
+
+def _save_tags(tags: list[str]) -> None:
+    with open(TAGS_FILE, "w") as f:
+        json.dump(tags, f, indent=2)
+
+
+VALID_TAGS: list[str] = _load_tags()
+VALID_TAGS_LOWER: dict[str, str] = {t.lower(): t for t in VALID_TAGS}
 
 TV_WATCH_TAB = "TV Watch List"
 
@@ -126,9 +134,11 @@ TV_WATCH_TAB = "TV Watch List"
 
 HELP_TEXT = (
     "<b>Movie List Maintainer</b>\n\n"
-    "/watched <code>&lt;title&gt; [| note [| rank]]</code> — Move from Watch List to Movies; adds directly if not on Watch List\n\n"
-    "/addwatch <code>&lt;title&gt; [tag]</code> — Add to Watch List\n"
-    "  Tags: General, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
+    "/watched <code>&lt;title&gt; [| note [| rank [| tag]]]</code> — Move from Watch List to Movies; adds directly if not on Watch List\n\n"
+    "/tag <code>&lt;title&gt; | &lt;tag&gt;</code> — Add a tag to a movie's Tags field (appends; comma-separated)\n\n"
+    "/newtag <code>&lt;tag&gt;</code> — Add a new tag to the valid tags list\n\n"
+    "/addwatch <code>&lt;title&gt; [| tag]</code> — Add to Watch List; use <code>tv</code> as tag for TV Watch List\n"
+    "  Tags: Weird, Dudeist, Christmas, Guilty Pleasure, So Bad It's Good, WTF\n\n"
     "/rank <code>&lt;title&gt; | &lt;rank&gt;</code> — Set rank in Movies (<code>42</code>, <code>4stars</code>, <code>4.5stars</code>)\n\n"
     "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes\n\n"
     "/find <code>&lt;query&gt;</code> — Search all sheets\n\n"
@@ -618,31 +628,41 @@ async def cmd_watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/addwatch <title> [tag] — Add a movie to the Watch List."""
-    if not context.args:
+    """/addwatch <title> [| tag] — Add a movie to the Watch List."""
+    text = " ".join(context.args).strip()
+    if not text:
         await update.message.reply_text(
-            "Usage: /addwatch <title> [tag]\n"
-            "Tags: General (default), Weird, Dudeist, Horror, Documentary, Christmas, TV"
+            "Usage: /addwatch <title> [| tag]\n"
+            f"Tags: {', '.join(VALID_TAGS)}\n"
+            "Use <code>tv</code> as the tag to add to TV Watch List instead.",
+            parse_mode="HTML",
         )
         return
 
-    args = list(context.args)
-    category = "General"
-    target_tab = "Watch List"
+    parts = [p.strip() for p in text.split("|", 1)]
+    title = parts[0].strip()
+    tag_input = parts[1].strip() if len(parts) > 1 else ""
 
-    last = args[-1].lower()
-    if last == "tv":
-        target_tab = TV_WATCH_TAB
-        category = ""
-        args.pop()
-    elif last in CATEGORY_ALIASES:
-        category = CATEGORY_ALIASES[last]
-        args.pop()
-
-    title = " ".join(args).strip()
     if not title:
         await update.message.reply_text("Please provide a movie title.")
         return
+
+    tag = ""
+    target_tab = "Watch List"
+
+    if tag_input:
+        if tag_input.lower() == "tv":
+            target_tab = TV_WATCH_TAB
+        elif tag_input.lower() in VALID_TAGS_LOWER:
+            tag = VALID_TAGS_LOWER[tag_input.lower()]
+        else:
+            valid_list = ", ".join(VALID_TAGS)
+            await update.message.reply_text(
+                f"Unknown tag '{html(tag_input)}'. Valid tags: {html(valid_list)}\n"
+                "Use <code>tv</code> to add to the TV Watch List.",
+                parse_mode="HTML",
+            )
+            return
 
     await update.message.reply_text(f"Looking up '{title}' on OMDb…")
     data = await _fetch_omdb_safe(update, title)
@@ -674,13 +694,13 @@ async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     new_row = _omdb_row(data, headers)
     if "Tags" in col_index:
-        new_row[col_index["Tags"]] = category
+        new_row[col_index["Tags"]] = tag
     if "Date Added" in col_index:
         new_row[col_index["Date Added"]] = datetime.date.today().isoformat()
 
     insert_at = max(2, len(all_values))
     ws.insert_row(new_row, insert_at)
-    tab_label = target_tab + (f" [{category}]" if category else "")
+    tab_label = target_tab + (f" [{tag}]" if tag else "")
     await update.message.reply_text(
         f"Added <b>{html(canonical_title)}</b> ({html(data.get('Year', '?'))}) to {html(tab_label)}.",
         parse_mode="HTML",
@@ -766,10 +786,11 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not text:
         await update.message.reply_text(
-            "Usage: /watched <title> [| <note> [| <rank>]]\n"
+            "Usage: /watched <title> [| <note> [| <rank> [| <tag>]]]\n"
             "Examples: /watched Chinatown\n"
             "          /watched Chinatown | great ending | 12\n"
-            "          /watched Chinatown | | 4stars"
+            "          /watched Chinatown | | 4stars\n"
+            "          /watched Chinatown | great ending | 12 | SBIG"
         )
         return
 
@@ -777,6 +798,7 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
     title = parts[0]
     note_text = parts[1] if len(parts) > 1 else ""
     rank_str = parts[2] if len(parts) > 2 else ""
+    tag_text = parts[3] if len(parts) > 3 else ""
     target_sheet = "Movies"
 
     if not title:
@@ -877,6 +899,13 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if note_text and "Notes" in col_index:
                     target_ws.update_cell(existing_row_num, col_index["Notes"] + 1, note_text)
                     updates.append("note updated")
+                if tag_text and "Tags" in col_index:
+                    existing_tags_val = existing_padded[col_index["Tags"]].strip() if col_index["Tags"] < len(existing_padded) else ""
+                    existing_tags = [t.strip() for t in existing_tags_val.split(",") if t.strip()]
+                    if tag_text not in existing_tags:
+                        existing_tags.append(tag_text)
+                    target_ws.update_cell(existing_row_num, col_index["Tags"] + 1, ", ".join(existing_tags))
+                    updates.append(f"tagged {tag_text}")
                 bumped_overflow: list[str] = []
                 if rank_value and "Rank" in col_index:
                     old_rank = existing_padded[col_index["Rank"]].strip() if col_index["Rank"] < len(existing_padded) else ""
@@ -900,6 +929,8 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         new_row[col_index[field]] = value
                 if note_text and "Notes" in col_index:
                     new_row[col_index["Notes"]] = note_text
+                if tag_text and "Tags" in col_index:
+                    new_row[col_index["Tags"]] = tag_text
                 if rank_value and "Rank" in col_index:
                     new_row[col_index["Rank"]] = rank_value
                 if "Last Watched" in col_index:
@@ -1247,6 +1278,83 @@ async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_newtag(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/newtag <tag> — Add a new tag to the valid tags list."""
+    tag = " ".join(context.args).strip()
+    if not tag:
+        await update.message.reply_text("Usage: /newtag <tag>")
+        return
+
+    if tag.lower() in VALID_TAGS_LOWER:
+        canonical = VALID_TAGS_LOWER[tag.lower()]
+        await update.message.reply_text(f"'{html(canonical)}' is already a valid tag.", parse_mode="HTML")
+        return
+
+    VALID_TAGS.append(tag)
+    VALID_TAGS_LOWER[tag.lower()] = tag
+    _save_tags(VALID_TAGS)
+
+    await update.message.reply_text(
+        f"Added tag <b>{html(tag)}</b>. Current tags: {html(', '.join(VALID_TAGS))}",
+        parse_mode="HTML",
+    )
+
+
+async def cmd_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/tag <title> | <tag> — Add a tag to a movie's Tags field (appends, comma-separated)."""
+    text = " ".join(context.args).strip()
+    if "|" not in text:
+        await update.message.reply_text("Usage: /tag <title> | <tag>")
+        return
+
+    title, _, tag_text = text.partition("|")
+    title = title.strip()
+    tag_text = tag_text.strip()
+
+    if not title or not tag_text:
+        await update.message.reply_text("Usage: /tag <title> | <tag>")
+        return
+
+    try:
+        ss = get_spreadsheet()
+    except Exception as err:
+        await update.message.reply_text(f"Could not connect to sheet: {err}")
+        return
+
+    results = _search_all_sheets(ss, title)
+    if not results:
+        await update.message.reply_text(f"'{html(title)}' not found in any sheet.", parse_mode="HTML")
+        return
+
+    updated = []
+    for ws_name, row_num, padded, headers in results:
+        col_index = {h: i for i, h in enumerate(headers)}
+        if "Tags" not in col_index:
+            continue
+        ws = ss.worksheet(ws_name)
+        existing = padded[col_index["Tags"]].strip()
+        existing_tags = [t.strip() for t in existing.split(",") if t.strip()]
+        if tag_text in existing_tags:
+            updated.append(f"{ws_name} (already tagged)")
+            continue
+        existing_tags.append(tag_text)
+        new_tags = ", ".join(existing_tags)
+        ws.update_cell(row_num, col_index["Tags"] + 1, new_tags)
+        updated.append(ws_name)
+
+    if not updated:
+        await update.message.reply_text(
+            f"'{html(title)}' found but no eligible sheets have a Tags column.",
+            parse_mode="HTML",
+        )
+        return
+
+    await update.message.reply_text(
+        f"Tagged <b>{html(title)}</b> with <b>{html(tag_text)}</b> in {html(', '.join(updated))}.",
+        parse_mode="HTML",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -1278,6 +1386,8 @@ def main():
     app.add_handler(CommandHandler("history",   cmd_history,   filters=user_filter))
     app.add_handler(CommandHandler("trend",     cmd_trend,     filters=user_filter))
     app.add_handler(CommandHandler("note",      cmd_note,      filters=user_filter))
+    app.add_handler(CommandHandler("tag",       cmd_tag,       filters=user_filter))
+    app.add_handler(CommandHandler("newtag",    cmd_newtag,    filters=user_filter))
     app.add_handler(CommandHandler("random",    cmd_random,    filters=user_filter))
 
     print(f"Bot running. Sheet: {SHEET_NAME}")
