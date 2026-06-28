@@ -41,8 +41,8 @@ WORKSHEET_NAMES = [
 ]
 
 WATCH_LIST_KEYWORD = "Watch List"
-MOVIE_LIST_COLUMNS = ["Rank", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Last Watched", "Notes", "Tags"]
-WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Genre", "IMDB Rating", "Metascore", "Date Added", "Notes", "Tags"]
+MOVIE_LIST_COLUMNS = ["Rank", "Title", "Year", "Director", "Country", "Genre", "Tags", "IMDB Rating", "Metascore", "Last Watched", "Notes"]
+WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Genre", "Tags", "IMDB Rating", "Metascore", "Date Added", "Notes"]
 LOG_TAB = "History"
 LOG_COLUMNS = ["Date", "Type", "Title", "Detail"]
 
