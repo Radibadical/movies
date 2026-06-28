@@ -110,20 +110,30 @@ Restart policy: `on-failure` with 10s delay.
 
 | Command | Description |
 |---|---|
-| `/addwatch <title> [category]` | Add to Watch List (fetches OMDb data, records Date Added) |
-| `/setorder <title> <rank>` | Set Watch Order or Rank; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
-| `/watched <title> [| note [| rank]]` | Remove from Watch List and add to Movies sheet; rank accepts same format as /setorder; falls back to OMDb if not in watch list; stamps Last Watched |
-| `/history [n]` | Show last n rank changes and watched events (default 10, max 50) |
+| `/addwatch <title> [| tag]` | Add to Watch List (fetches OMDb data, records Date Added); use `tv` as tag to route to TV Watch List |
+| `/watched <title> [| note [| rank [| tag]]]` | Remove from Watch List and add to Movies sheet; rank accepts same format as /rank; falls back to OMDb if not in watch list; stamps Last Watched |
+| `/rank <title> | <rank>` | Set rank in Movies; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
+| `/tag <title> | <tag>` | Append a tag to a movie's Tags field across all sheets where it appears |
+| `/newtag <tag>` | Add a new tag to the valid tags list (persisted to `tags.json`) |
 | `/note <title> | <note text>` | Add/update Notes field |
 | `/find <query>` | Search every tab and every column in the spreadsheet (not just Title) |
 | `/omdb <title>` | OMDb lookup without touching any sheet |
-| `/watchlist [category]` | Show Watch List, optionally filtered by category |
-| `/ranked <start> <end> [category]` | Show rank/watch-order range, grouped by sheet; optional category filter |
-| `/random [genre]` | Suggest a random movie from the Watch List; optional genre substring filter |
+| `/watchlist [tag]` | Show Watch List, optionally filtered by tag |
+| `/random [genre [| tag]]` | Suggest a random movie from the Watch List; optional genre and tag filters |
+| `/history [n]` | Show last n rank changes and watched events (default 10, max 50) |
+| `/trend list` | Show active rank trends (last 30 days) |
+| `/trend reset <title>` | Clear the trend indicator for a movie |
 | `/help` | Show help message |
 
-Categories for `/watchlist` and `/ranked`: General, Weird, Dudeist, Horror,
-Documentary, Christmas, TV.
+### Tags
+
+Valid tags are stored in `tags.json` and loaded at bot startup. The in-memory `VALID_TAGS` list and `VALID_TAGS_LOWER` dict are updated live by `/newtag` without requiring a restart.
+
+Current tags: Christmas, Dudeist, Guilty Pleasure, So Bad It's Good, WTF, Weird.
+
+`/addwatch` and `/watched` validate the tag against `VALID_TAGS_LOWER` (case-insensitive) and reject unknown tags with an error listing valid options. `/tag` does not validate — it accepts any string and appends it to the Tags field.
+
+Tags in watch list sheets are movie-specific labels (same as main list sheets). There is no longer a separate category concept — the Tags column serves both purposes.
 
 ### `/find` behaviour
 Searches every worksheet in the spreadsheet (including History) via `ss.worksheets()`,
@@ -134,11 +144,11 @@ each result block.
 ### `/random` behaviour
 Draws only from the "Watch List" tab (not TV Watch List or other sheets). Genre argument
 is a case-insensitive substring match against the Genre column (e.g. `horror` matches
-"Horror, Thriller").
+"Horror, Thriller"). Optional tag filter via pipe: `/random horror | weird`.
 
 ### `/watched` syntax
-3-part pipe syntax: `title | note | rank`. Sheet is always Movies — no sheet parameter.
-Falls back to OMDb lookup if the title is not found in any Watch List.
+4-part pipe syntax: `title | note | rank | tag`. Sheet is always Movies — no sheet parameter.
+Falls back to OMDb lookup if the title is not found in any Watch List. Tag is validated against `VALID_TAGS` and appended to existing Tags on update, or set on insert.
 
 ### `/history` filtering
 Watch list rank changes (Watch Order updates) are excluded. Only "Rank Changed" events
@@ -149,6 +159,10 @@ integer 1–200 are shown.
 Uses `insert_at = max(2, len(all_values))` to insert within the Google Sheets Table
 range rather than one row past the end. Inserting within the table range triggers
 `insertDimension`, which auto-expands the table boundary.
+
+Tag is validated against `VALID_TAGS_LOWER` before the OMDb lookup is made. `tv` is a
+special routing keyword (not a tag) that sends the movie to the TV Watch List tab instead
+of Watch List; it is detected before tag validation.
 
 ## Key implementation details
 
