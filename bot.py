@@ -76,6 +76,8 @@ HELP_TEXT = (
     "/watchlist <code>[category]</code> — Show the Watch List, optionally filtered by category\n\n"
     "/random <code>[genre [| category]]</code> — Suggest a random movie from your Watch List\n"
     "  Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
+    "/trend list — Show active rank trends (last 30 days)\n"
+    "/trend reset <code>&lt;title&gt;</code> — Clear the trend indicator for a movie\n\n"
     "/help — Show this message"
 )
 
@@ -1007,6 +1009,115 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
+async def cmd_trend(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/trend reset <title> | /trend list — Manage rank trend indicators on the web UI."""
+    args = list(context.args)
+    if not args:
+        await update.message.reply_text(
+            "Usage:\n"
+            "/trend reset <title> — Clear the trend indicator for a movie\n"
+            "/trend list — Show all active rank trends (last 30 days)"
+        )
+        return
+
+    subcommand = args[0].lower()
+
+    try:
+        ss = get_spreadsheet()
+    except Exception as err:
+        await update.message.reply_text(f"Could not connect to sheet: {err}")
+        return
+
+    if subcommand == "reset":
+        title = " ".join(args[1:]).strip()
+        if not title:
+            await update.message.reply_text("Usage: /trend reset <title>")
+            return
+        _append_log(ss, "Trend Reset", title, "manual reset")
+        await update.message.reply_text(
+            f"Trend cleared for <b>{html(title)}</b>. The web UI will hide the indicator on next load.",
+            parse_mode="HTML",
+        )
+
+    elif subcommand == "list":
+        try:
+            log_ws = ss.worksheet(LOG_TAB)
+        except gspread.WorksheetNotFound:
+            await update.message.reply_text("No history recorded yet.")
+            return
+
+        all_values = log_ws.get_all_values()
+        if len(all_values) < 2:
+            await update.message.reply_text("No history recorded yet.")
+            return
+
+        headers = all_values[0]
+        col_index = {h: i for i, h in enumerate(headers)}
+
+        cutoff = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+
+        # Build most recent rank change per title within 30 days
+        rank_changes: dict[str, dict] = {}
+        resets: dict[str, str] = {}
+        for row in all_values[1:]:
+            padded = row + [""] * max(0, len(headers) - len(row))
+            etype = padded[col_index["Type"]] if "Type" in col_index else ""
+            date = padded[col_index["Date"]] if "Date" in col_index else ""
+            title_val = padded[col_index["Title"]] if "Title" in col_index else ""
+            detail = padded[col_index["Detail"]] if "Detail" in col_index else ""
+            title_key = title_val.lower()
+
+            if etype == "Trend Reset":
+                resets[title_key] = date
+                continue
+
+            if etype != "Rank Changed" or date < cutoff:
+                continue
+            if WATCH_LIST_KEYWORD in detail:
+                continue
+            ai = detail.rfind("→")
+            if ai == -1:
+                continue
+            new_str = detail[ai + 1:].strip()
+            if not new_str.isdigit():
+                continue
+            new_n = int(new_str)
+            if not (1 <= new_n <= 200):
+                continue
+            before = detail[:ai].strip()
+            old_str = before.split()[-1] if before.split() else ""
+            if not old_str.isdigit():
+                continue
+            old_n = int(old_str)
+            if old_n == new_n:
+                continue
+            rank_changes[title_key] = {"title": title_val, "old": old_n, "new": new_n, "date": date}
+
+        # Filter out reset titles
+        active = {
+            k: v for k, v in rank_changes.items()
+            if k not in resets or resets[k] < v["date"]
+        }
+
+        if not active:
+            await update.message.reply_text("No active rank trends in the last 30 days.")
+            return
+
+        lines = [f"<b>Active Trends</b> (last 30 days)\n"]
+        for v in sorted(active.values(), key=lambda x: x["date"], reverse=True):
+            direction = "↑" if v["new"] < v["old"] else "↓"
+            delta = abs(v["new"] - v["old"])
+            lines.append(f"{html(v['date'])} <b>{html(v['title'])}</b>: {v['old']} → {v['new']} {direction}{delta}")
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+    else:
+        await update.message.reply_text(
+            "Unknown subcommand. Usage:\n"
+            "/trend reset <title>\n"
+            "/trend list"
+        )
+
+
 async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/note <title> | <note text> — Add or update the Notes field for a movie."""
     text = " ".join(context.args).strip()
@@ -1080,6 +1191,7 @@ def main():
     app.add_handler(CommandHandler("rank", cmd_rank))
     app.add_handler(CommandHandler("watched", cmd_watched))
     app.add_handler(CommandHandler("history", cmd_history))
+    app.add_handler(CommandHandler("trend", cmd_trend))
     app.add_handler(CommandHandler("note", cmd_note))
     app.add_handler(CommandHandler("random", cmd_random))
 

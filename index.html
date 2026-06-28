@@ -364,10 +364,10 @@ let rankChanges  = {};
 let query        = '';
 let activePage = 'top100';
 
-function dismissArrow(titleKey, newN, el) {
-  const seen = JSON.parse(localStorage.getItem('movieSeenRanks') || '{}');
-  seen[titleKey] = newN;
-  localStorage.setItem('movieSeenRanks', JSON.stringify(seen));
+function clearTrend(titleKey, newN, el) {
+  const trends = JSON.parse(localStorage.getItem('movieTrends') || '{}');
+  trends[titleKey] = newN;
+  localStorage.setItem('movieTrends', JSON.stringify(trends));
   el.remove();
 }
 
@@ -495,7 +495,7 @@ function buildTable({ cols, rows }) {
               const delta = Math.abs(rc.newN - rc.oldN);
               const cls = rc.newN < rc.oldN ? 'h-arrow-up' : 'h-arrow-down';
               const sym = rc.newN < rc.oldN ? '↑' : '↓';
-              arrowHtml = `<span class="${cls}" title="Click to dismiss" onclick="dismissArrow('${rowTitle.replace(/'/g, "\\'")}',${rc.newN},this)">${sym}${delta}</span>`;
+              arrowHtml = `<span class="${cls}" title="Click to clear trend" onclick="clearTrend('${rowTitle.replace(/'/g, "\\'")}',${rc.newN},this)">${sym}${delta}</span>`;
             }
           }
           return `<td class="col-rank">${esc(val)}${arrowHtml ? ' ' + arrowHtml : ''}</td>`;
@@ -558,7 +558,7 @@ function buildCards({ cols, rows }) {
           const cls = rc.newN < rc.oldN ? 'h-arrow-up' : 'h-arrow-down';
           const sym = rc.newN < rc.oldN ? '↑' : '↓';
           const tk = title.toLowerCase().replace(/'/g, "\\'");
-          cardArrow = `<span class="${cls}" title="Click to dismiss" onclick="dismissArrow('${tk}',${rc.newN},this)">${sym}${delta}</span>`;
+          cardArrow = `<span class="${cls}" title="Click to clear trend" onclick="clearTrend('${tk}',${rc.newN},this)">${sym}${delta}</span>`;
         }
       }
     }
@@ -649,7 +649,7 @@ async function fetchHistory() {
   // Main list arrows: most recent rank change per title, numeric 1-200 only, within 30 days
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 30);
-  const seenRanks = JSON.parse(localStorage.getItem('movieSeenRanks') || '{}');
+  const trends = JSON.parse(localStorage.getItem('movieTrends') || '{}');
   const changes = {};
   for (const row of allRows) {
     if ((row[ci['Type']] || '') !== 'Rank Changed') continue;
@@ -668,8 +668,21 @@ async function fetchHistory() {
     const oldN = parseInt(oldStr, 10);
     if (!Number.isFinite(oldN) || oldN === newN) continue;
     const titleKey = (row[ci['Title']] || '').toLowerCase();
-    if (seenRanks[titleKey] === newN) continue;
-    changes[titleKey] = { oldN, newN };
+    if (trends[titleKey] === newN) continue;
+    changes[titleKey] = { oldN, newN, changeDate: row[ci['Date']] || '' };
+  }
+
+  // Suppress trends reset via bot (/trend reset logs a "Trend Reset" event)
+  const resets = {};
+  for (const row of allRows) {
+    if ((row[ci['Type']] || '') !== 'Trend Reset') continue;
+    const titleKey = (row[ci['Title']] || '').toLowerCase();
+    resets[titleKey] = row[ci['Date']] || '';
+  }
+  for (const titleKey of Object.keys(resets)) {
+    if (changes[titleKey] && resets[titleKey] >= changes[titleKey].changeDate) {
+      delete changes[titleKey];
+    }
   }
 
   return { entries, total: watchedRows.length, ci, rankChanges: changes };
