@@ -307,8 +307,8 @@
     }
     .h-badge-watched { background: #1a3a2a; color: #3fb950; }
     .h-badge-ranked  { background: #1a2a3a; color: #58a6ff; }
-    .h-arrow-up   { color: #3fb950; font-weight: 700; }
-    .h-arrow-down { color: #f85149; font-weight: 700; }
+    .h-arrow-up   { color: #3fb950; font-weight: 700; cursor: pointer; }
+    .h-arrow-down { color: #f85149; font-weight: 700; cursor: pointer; }
     .col-rank .h-arrow-up, .col-rank .h-arrow-down,
     .card-rank .h-arrow-up, .card-rank .h-arrow-down { font-size: 0.6rem; }
   </style>
@@ -363,6 +363,13 @@ let historyCache = null;
 let rankChanges  = {};
 let query        = '';
 let activePage = 'top100';
+
+function dismissArrow(titleKey, el) {
+  const dismissals = JSON.parse(localStorage.getItem('movieArrowDismissals') || '{}');
+  dismissals[titleKey] = new Date().toISOString().slice(0, 10);
+  localStorage.setItem('movieArrowDismissals', JSON.stringify(dismissals));
+  el.remove();
+}
 
 // ── CSV parser ───────────────────────────────────────────────────────────────
 function parseCSV(text) {
@@ -486,9 +493,9 @@ function buildTable({ cols, rows }) {
             const rc = rankChanges[rowTitle];
             if (rc) {
               const delta = Math.abs(rc.newN - rc.oldN);
-              arrowHtml = rc.newN < rc.oldN
-                ? `<span class="h-arrow-up">↑${delta}</span>`
-                : `<span class="h-arrow-down">↓${delta}</span>`;
+              const cls = rc.newN < rc.oldN ? 'h-arrow-up' : 'h-arrow-down';
+              const sym = rc.newN < rc.oldN ? '↑' : '↓';
+              arrowHtml = `<span class="${cls}" title="Click to dismiss" onclick="dismissArrow('${rowTitle.replace(/'/g, "\\'")}',this)">${sym}${delta}</span>`;
             }
           }
           return `<td class="col-rank">${esc(val)}${arrowHtml ? ' ' + arrowHtml : ''}</td>`;
@@ -548,9 +555,10 @@ function buildCards({ cols, rows }) {
         const rc = rankChanges[title.toLowerCase()];
         if (rc) {
           const delta = Math.abs(rc.newN - rc.oldN);
-          cardArrow = rc.newN < rc.oldN
-            ? `<span class="h-arrow-up">↑${delta}</span>`
-            : `<span class="h-arrow-down">↓${delta}</span>`;
+          const cls = rc.newN < rc.oldN ? 'h-arrow-up' : 'h-arrow-down';
+          const sym = rc.newN < rc.oldN ? '↑' : '↓';
+          const tk = title.toLowerCase().replace(/'/g, "\\'");
+          cardArrow = `<span class="${cls}" title="Click to dismiss" onclick="dismissArrow('${tk}',this)">${sym}${delta}</span>`;
         }
       }
     }
@@ -641,6 +649,7 @@ async function fetchHistory() {
   // Main list arrows: most recent rank change per title, numeric 1-200 only, within 30 days
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 30);
+  const dismissals = JSON.parse(localStorage.getItem('movieArrowDismissals') || '{}');
   const changes = {};
   for (const row of allRows) {
     if ((row[ci['Type']] || '') !== 'Rank Changed') continue;
@@ -658,7 +667,10 @@ async function fetchHistory() {
     const oldStr = before.split(/[\s:]+/).pop();
     const oldN = parseInt(oldStr, 10);
     if (!Number.isFinite(oldN) || oldN === newN) continue;
-    changes[(row[ci['Title']] || '').toLowerCase()] = { oldN, newN };
+    const titleKey = (row[ci['Title']] || '').toLowerCase();
+    const changeDate = row[ci['Date']] || '';
+    if (dismissals[titleKey] && dismissals[titleKey] >= changeDate) continue;
+    changes[titleKey] = { oldN, newN, changeDate };
   }
 
   return { entries, total: watchedRows.length, ci, rankChanges: changes };
