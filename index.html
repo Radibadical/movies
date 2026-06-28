@@ -309,6 +309,8 @@
     .h-badge-ranked  { background: #1a2a3a; color: #58a6ff; }
     .h-arrow-up   { color: #3fb950; font-weight: 700; }
     .h-arrow-down { color: #f85149; font-weight: 700; }
+    .col-rank .h-arrow-up, .col-rank .h-arrow-down,
+    .card-rank .h-arrow-up, .card-rank .h-arrow-down { font-size: 0.6rem; }
   </style>
 </head>
 <body>
@@ -358,6 +360,7 @@ const PAGES = {
 // ── State ────────────────────────────────────────────────────────────────────
 let cache        = null;
 let historyCache = null;
+let rankChanges  = {};
 let query        = '';
 let activePage = 'top100';
 
@@ -469,13 +472,27 @@ function buildTable({ cols, rows }) {
   let body = '';
   for (const row of filtered) {
     const note = notesIdx !== undefined ? (row[notesIdx] || '') : '';
+    const rowTitle = (row[idx['Title']] || '').toLowerCase();
     const tds = displayCols.map(c => {
       const val = row[idx[c]] || '';
       switch (c) {
-        case 'Rank':
-          return isStarRank(val)
-            ? `<td class="col-rank stars" title="${starLabel(val)}">${renderStars(val)}</td>`
-            : `<td class="col-rank">${esc(val)}</td>`;
+        case 'Rank': {
+          if (isStarRank(val)) {
+            return `<td class="col-rank stars" title="${starLabel(val)}">${renderStars(val)}</td>`;
+          }
+          const n = parseInt(val, 10);
+          let arrowHtml = '';
+          if (Number.isFinite(n) && n >= 1 && n <= 200) {
+            const rc = rankChanges[rowTitle];
+            if (rc) {
+              const delta = Math.abs(rc.newN - rc.oldN);
+              arrowHtml = rc.newN < rc.oldN
+                ? `<span class="h-arrow-up">↑${delta}</span>`
+                : `<span class="h-arrow-down">↓${delta}</span>`;
+            }
+          }
+          return `<td class="col-rank">${esc(val)}${arrowHtml ? ' ' + arrowHtml : ''}</td>`;
+        }
         case 'Title':        return `<td class="col-title">${esc(val)}</td>`;
         case 'Year':         return `<td class="col-year">${esc(val)}</td>`;
         case 'Director':     return `<td class="col-director">${esc(val)}</td>`;
@@ -524,9 +541,23 @@ function buildCards({ cols, rows }) {
     const rankTitle = isStarRank(rank) ? ` title="${starLabel(rank)}"` : '';
     const secondary = [year, dir].filter(Boolean).join(' · ');
 
+    let cardArrow = '';
+    if (!isStarRank(rank)) {
+      const n = parseInt(rank, 10);
+      if (Number.isFinite(n) && n >= 1 && n <= 200) {
+        const rc = rankChanges[title.toLowerCase()];
+        if (rc) {
+          const delta = Math.abs(rc.newN - rc.oldN);
+          cardArrow = rc.newN < rc.oldN
+            ? `<span class="h-arrow-up">↑${delta}</span>`
+            : `<span class="h-arrow-down">↓${delta}</span>`;
+        }
+      }
+    }
+
     html += `<div class="card">
       <div class="card-header">
-        <div class="${rankClass}"${rankTitle}>${isStarRank(rank) ? renderStars(rank) : esc(rank)}</div>
+        <div class="${rankClass}"${rankTitle}>${isStarRank(rank) ? renderStars(rank) : esc(rank) + (cardArrow ? ' ' + cardArrow : '')}</div>
         <div class="card-body">
           <div class="card-title">${esc(title)}</div>
           ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
@@ -592,34 +623,41 @@ function fmtDate(iso) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function rankArrow(detail) {
-  const arrow = detail.lastIndexOf('→');
-  if (arrow === -1) return '';
-  const before = detail.slice(0, arrow).trim();
-  const oldStr = before.split(/[\s:]+/).pop();
-  const newStr = detail.slice(arrow + 1).trim();
-  const oldN = parseInt(oldStr, 10), newN = parseInt(newStr, 10);
-  if (!Number.isFinite(oldN) || !Number.isFinite(newN) || oldN === newN) return '';
-  const delta = Math.abs(newN - oldN);
-  return newN < oldN
-    ? `<span class="h-arrow-up">↑${delta}</span>`
-    : `<span class="h-arrow-down">↓${delta}</span>`;
-}
-
 async function fetchHistory() {
   const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&sheet=History`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const parsed = parseCSV(await res.text());
-  if (parsed.length < 2) return { entries: [], total: 0, ci: {} };
+  if (parsed.length < 2) return { entries: [], total: 0, ci: {}, rankChanges: {} };
   const cols = parsed[0].map(c => c.trim());
   const ci = {};
   cols.forEach((c, i) => { if (c) ci[c] = i; });
-  const visible = parsed.slice(1)
-    .map(r => r.map(c => c.trim()))
-    .filter(r => historyVisible(r, ci));
-  const entries = visible.slice(-HISTORY_LIMIT).reverse();
-  return { entries, total: visible.length, ci };
+  const allRows = parsed.slice(1).map(r => r.map(c => c.trim()));
+
+  // Recently Watched tab: only Watched events
+  const watchedRows = allRows.filter(r => (r[ci['Type']] || '') === 'Watched');
+  const entries = watchedRows.slice(-HISTORY_LIMIT).reverse();
+
+  // Main list arrows: most recent rank change per title, numeric 1-200 only
+  const changes = {};
+  for (const row of allRows) {
+    if ((row[ci['Type']] || '') !== 'Rank Changed') continue;
+    const detail = row[ci['Detail']] || '';
+    if (detail.includes('Watch List')) continue;
+    const ai = detail.lastIndexOf('→');
+    if (ai === -1) continue;
+    const newStr = detail.slice(ai + 1).trim();
+    if (!/^\d+$/.test(newStr)) continue;
+    const newN = parseInt(newStr, 10);
+    if (newN < 1 || newN > 200) continue;
+    const before = detail.slice(0, ai).trim();
+    const oldStr = before.split(/[\s:]+/).pop();
+    const oldN = parseInt(oldStr, 10);
+    if (!Number.isFinite(oldN) || oldN === newN) continue;
+    changes[(row[ci['Title']] || '').toLowerCase()] = { oldN, newN };
+  }
+
+  return { entries, total: watchedRows.length, ci, rankChanges: changes };
 }
 
 function buildHistoryContent({ entries, total, ci }) {
@@ -637,18 +675,12 @@ function buildHistoryContent({ entries, total, ci }) {
     '</tr></thead><tbody>';
 
   for (const row of entries) {
-    const date   = fmtDate(row[ci['Date']]   || '');
-    const type   = row[ci['Type']]            || '';
-    const title  = esc(row[ci['Title']]       || '');
-    const rawDetail = row[ci['Detail']]       || '';
-    const detail = esc(rawDetail);
-    const isWatched = type === 'Watched';
-    const badgeClass = isWatched ? 'h-badge h-badge-watched' : 'h-badge h-badge-ranked';
-    const badgeText  = isWatched ? 'WATCHED' : 'RANKED';
-    const arrow  = isWatched ? '' : ' ' + rankArrow(rawDetail);
+    const date   = fmtDate(row[ci['Date']]  || '');
+    const title  = esc(row[ci['Title']]     || '');
+    const detail = esc(row[ci['Detail']]    || '');
     out += `<tr class="main-row">` +
       `<td class="col-watched">${esc(date)}</td>` +
-      `<td><span class="${badgeClass}">${badgeText}</span>${arrow}</td>` +
+      `<td><span class="h-badge h-badge-watched">WATCHED</span></td>` +
       `<td class="col-title">${title}</td>` +
       `<td class="col-director">${detail}</td>` +
       `</tr>`;
@@ -658,17 +690,11 @@ function buildHistoryContent({ entries, total, ci }) {
   out += '<div class="cards">';
   for (const row of entries) {
     const date   = fmtDate(row[ci['Date']]   || '');
-    const type   = row[ci['Type']]            || '';
     const title  = esc(row[ci['Title']]       || '');
-    const rawDetail = row[ci['Detail']]       || '';
-    const detail = esc(rawDetail);
-    const isWatched = type === 'Watched';
-    const badgeClass = isWatched ? 'h-badge h-badge-watched' : 'h-badge h-badge-ranked';
-    const badgeText  = isWatched ? 'WATCHED' : 'RANKED';
-    const arrow  = isWatched ? '' : ' ' + rankArrow(rawDetail);
+    const detail = esc(row[ci['Detail']]      || '');
     out += `<div class="card"><div class="card-header"><div class="card-body">` +
       `<div class="card-title">${title}</div>` +
-      `<div class="card-secondary">${esc(date)}&nbsp;&nbsp;<span class="${badgeClass}">${badgeText}</span>${arrow}</div>` +
+      `<div class="card-secondary">${esc(date)}&nbsp;&nbsp;<span class="h-badge h-badge-watched">WATCHED</span></div>` +
       `${detail ? `<div class="card-genre" style="color:#8b949e;font-size:0.75rem;margin-top:0.2rem">${detail}</div>` : ''}` +
       `</div></div></div>`;
   }
@@ -689,7 +715,12 @@ function renderHistoryPage() {
 async function loadHistory() {
   try {
     historyCache = await fetchHistory();
-    if (activePage === 'history') renderHistoryPage();
+    rankChanges = historyCache.rankChanges;
+    if (activePage === 'history') {
+      renderHistoryPage();
+    } else if (cache) {
+      render(cache);
+    }
   } catch (err) {
     if (activePage === 'history') {
       document.getElementById('content').innerHTML =
