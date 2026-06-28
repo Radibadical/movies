@@ -583,14 +583,7 @@ async function load() {
 const HISTORY_LIMIT = 30;
 
 function historyVisible(row, ci) {
-  const type = row[ci['Type']] || '';
-  if (type !== 'Rank Changed') return true;
-  const detail = row[ci['Detail']] || '';
-  if (detail.includes('Watch List')) return false;
-  const arrow = detail.lastIndexOf('→');
-  if (arrow === -1) return true;
-  const newRank = detail.slice(arrow + 1).trim();
-  return /^\d+$/.test(newRank) && +newRank >= 1 && +newRank <= 200;
+  return (row[ci['Type']] || '') === 'Watched';
 }
 
 function fmtDate(iso) {
