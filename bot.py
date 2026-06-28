@@ -11,7 +11,7 @@ import requests
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, filters
 
 load_dotenv()
 
@@ -22,6 +22,7 @@ load_dotenv()
 CREDENTIALS_FILE = os.environ.get("CREDENTIALS_FILE", "credentials.json")
 OMDB_API_KEY = os.environ.get("OMDB_API_KEY", "")
 SHEET_NAME = os.environ.get("SHEET_NAME", "")
+ALLOWED_USER_ID = int(os.environ.get("ALLOWED_USER_ID", "0"))
 
 DEFAULT_WORKSHEETS = [
     "Movies",
@@ -1265,18 +1266,19 @@ def main():
         raise SystemExit(1)
 
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("omdb", cmd_omdb))
-    app.add_handler(CommandHandler("find", cmd_find))
-    app.add_handler(CommandHandler("watchlist", cmd_watchlist))
-    app.add_handler(CommandHandler("addwatch", cmd_addwatch))
-    app.add_handler(CommandHandler("rank", cmd_rank))
-    app.add_handler(CommandHandler("watched", cmd_watched))
-    app.add_handler(CommandHandler("history", cmd_history))
-    app.add_handler(CommandHandler("trend", cmd_trend))
-    app.add_handler(CommandHandler("note", cmd_note))
-    app.add_handler(CommandHandler("random", cmd_random))
+    user_filter = filters.User(user_id=ALLOWED_USER_ID)
+    app.add_handler(CommandHandler("start",     cmd_start,     filters=user_filter))
+    app.add_handler(CommandHandler("help",      cmd_help,      filters=user_filter))
+    app.add_handler(CommandHandler("omdb",      cmd_omdb,      filters=user_filter))
+    app.add_handler(CommandHandler("find",      cmd_find,      filters=user_filter))
+    app.add_handler(CommandHandler("watchlist", cmd_watchlist, filters=user_filter))
+    app.add_handler(CommandHandler("addwatch",  cmd_addwatch,  filters=user_filter))
+    app.add_handler(CommandHandler("rank",      cmd_rank,      filters=user_filter))
+    app.add_handler(CommandHandler("watched",   cmd_watched,   filters=user_filter))
+    app.add_handler(CommandHandler("history",   cmd_history,   filters=user_filter))
+    app.add_handler(CommandHandler("trend",     cmd_trend,     filters=user_filter))
+    app.add_handler(CommandHandler("note",      cmd_note,      filters=user_filter))
+    app.add_handler(CommandHandler("random",    cmd_random,    filters=user_filter))
 
     print(f"Bot running. Sheet: {SHEET_NAME}")
     app.run_polling()
