@@ -194,6 +194,17 @@
       color: #d4a017;
     }
     .col-title    { font-weight: 500; color: #e6edf3; font-size: 1.125rem; }
+    .col-tags     { margin-top: 0.25rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
+    .tag-badge {
+      display: inline-block; font-size: 0.6rem; font-weight: 600;
+      letter-spacing: 0.05em; padding: 0.1rem 0.4rem;
+      border-radius: 999px; text-transform: uppercase;
+    }
+    .tag-weird      { background: #2d1a4a; color: #c084fc; }
+    .tag-dudeist    { background: #0d2137; color: #60a5fa; }
+    .tag-christmas  { background: #0d2a18; color: #4ade80; }
+    .tag-default    { background: #21262d; color: #8b949e; }
+    .card-tags      { margin-top: 0.3rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
     .col-year     { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
     .col-director { color: #c9d1d9; }
     .col-country  {
@@ -364,6 +375,18 @@ let rankChanges  = {};
 let query        = '';
 let activePage = 'top100';
 
+const TAG_CLASS = { weird: 'tag-weird', dudeist: 'tag-dudeist', christmas: 'tag-christmas' };
+function renderTags(tagsStr) {
+  if (!tagsStr) return '';
+  const badges = tagsStr.split(',').map(t => {
+    const label = t.trim();
+    if (!label) return '';
+    const cls = TAG_CLASS[label.toLowerCase()] || 'tag-default';
+    return `<span class="tag-badge ${cls}">${esc(label)}</span>`;
+  }).join('');
+  return badges ? `<div class="col-tags">${badges}</div>` : '';
+}
+
 function clearTrend(titleKey, newN, el) {
   const trends = JSON.parse(localStorage.getItem('movieTrends') || '{}');
   trends[titleKey] = newN;
@@ -500,7 +523,10 @@ function buildTable({ cols, rows }) {
           }
           return `<td class="col-rank">${esc(val)}${arrowHtml ? ' ' + arrowHtml : ''}</td>`;
         }
-        case 'Title':        return `<td class="col-title">${esc(val)}</td>`;
+        case 'Title': {
+          const tags = idx['Tags'] !== undefined ? (row[idx['Tags']] || '') : '';
+          return `<td class="col-title">${esc(val)}${renderTags(tags)}</td>`;
+        }
         case 'Year':         return `<td class="col-year">${esc(val)}</td>`;
         case 'Director':     return `<td class="col-director">${esc(val)}</td>`;
         case 'Country':      return val ? `<td class="col-country" title="${esc(val)}">${esc(val)}</td>` : '<td></td>';
@@ -541,6 +567,7 @@ function buildCards({ cols, rows }) {
     const year  = row[idx['Year']]        || '';
     const dir   = row[idx['Director']]    || '';
     const genre = row[idx['Genre']]       || '';
+    const tags  = idx['Tags'] !== undefined ? (row[idx['Tags']] || '') : '';
     const imdb  = row[idx['IMDB Rating']] || '';
     const note  = notesIdx !== undefined ? (row[notesIdx] || '') : '';
 
@@ -570,6 +597,7 @@ function buildCards({ cols, rows }) {
           <div class="card-title">${esc(title)}</div>
           ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
           ${genre    ? `<div class="card-genre">${esc(genre)}</div>` : ''}
+          ${renderTags(tags)}
         </div>
         ${imdb ? `<div class="card-imdb">★ ${esc(imdb)}</div>` : ''}
       </div>
@@ -761,6 +789,7 @@ function buildHistoryContent({ entries, total, ci }) {
     const year  = getMov(row, 'Year');
     const dir   = getMov(row, 'Director');
     const genre = getMov(row, 'Genre');
+    const tags  = getMov(row, 'Tags');
     const imdb  = getMov(row, 'IMDB Rating');
     const note  = getMov(row, 'Notes');
 
@@ -775,6 +804,7 @@ function buildHistoryContent({ entries, total, ci }) {
           <div class="card-title">${esc(title)}</div>
           ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
           ${genre ? `<div class="card-genre">${esc(genre)}</div>` : ''}
+          ${renderTags(tags)}
         </div>
         ${imdb ? `<div class="card-imdb">★ ${esc(imdb)}</div>` : ''}
       </div>
