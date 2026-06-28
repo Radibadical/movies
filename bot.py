@@ -68,15 +68,12 @@ HELP_TEXT = (
     "/setorder <code>&lt;title&gt; &lt;rank&gt;</code> — Set Watch Order or Rank; use <code>4stars</code> / <code>4.5stars</code> for star ratings\n\n"
     "/watched <code>&lt;title&gt; [| note [| rank]]</code> — Remove from Watch List and add to Movies\n"
     "  Rank: plain number (e.g. <code>42</code>) or star rating (e.g. <code>4stars</code>, <code>4.5stars</code>)\n"
-    "  If not in the Watch List, looks up on OMDb and adds directly to the target sheet\n"
-    "  Sheets: Movies, TV, Weird Movies, Documentaries, Horror/Halloween, Christmas\n\n"
+    "  If not in the Watch List, looks up on OMDb and adds directly to Movies\n\n"
     "/history <code>[n]</code> — Show recent rank changes and watched movies (default 10, max 50)\n\n"
     "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update the Notes field for a movie\n\n"
     "/find <code>&lt;title&gt;</code> — Search all sheets for a movie\n\n"
     "/omdb <code>&lt;title&gt;</code> — Look up OMDb info without modifying any sheet\n\n"
     "/watchlist <code>[category]</code> — Show the Watch List, optionally filtered by category\n\n"
-    "/ranked <code>&lt;start&gt; &lt;end&gt; [category]</code> — Show movies in a rank/watch-order range, grouped by sheet\n"
-    "  Categories: Movies, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
     "/random <code>[genre]</code> — Suggest a random movie from your Watch List, optionally filtered by genre\n\n"
     "/help — Show this message"
 )
@@ -540,116 +537,6 @@ async def cmd_watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for chunk in _send_chunked(lines, "\n"):
         await update.message.reply_text(header_line + chunk, parse_mode="HTML")
         header_line = ""  # only show header on first chunk
-
-
-async def cmd_ranked(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/ranked <start> <end> [category] — Show movies in a rank/watch-order range, grouped by sheet."""
-    raw = " ".join(context.args).strip().replace("-", " ").split()
-
-    # Extract optional category: last token that isn't a digit
-    category_filter = ""
-    if raw and not raw[-1].isdigit():
-        category_filter = raw.pop().lower()
-
-    if len(raw) != 2 or not all(r.isdigit() for r in raw):
-        await update.message.reply_text(
-            "Usage: /ranked <start> <end> [category]\nExample: /ranked 1 10 Weird"
-        )
-        return
-
-    lo, hi = int(raw[0]), int(raw[1])
-    if lo > hi:
-        lo, hi = hi, lo
-
-    try:
-        ss = get_spreadsheet()
-    except Exception as err:
-        await update.message.reply_text(f"Could not connect to sheet: {err}")
-        return
-
-    sections = []
-
-    for ws_name in WORKSHEET_NAMES:
-        try:
-            ws = ss.worksheet(ws_name)
-        except gspread.WorksheetNotFound:
-            continue
-        all_values = ws.get_all_values()
-        if not all_values:
-            continue
-        headers = all_values[0]
-        col_index = {h: i for i, h in enumerate(headers)}
-        if "Title" not in col_index:
-            continue
-
-        is_watch = WATCH_LIST_KEYWORD in ws_name
-        order_col = "Watch Order" if is_watch else "Rank"
-        if order_col not in col_index:
-            continue
-
-        # Apply category filter:
-        # - Watch list sheets: filter by Category column value
-        # - Regular sheets: skip if category name not in sheet name
-        if category_filter:
-            if is_watch:
-                # will filter per-row below
-                pass
-            else:
-                if category_filter not in ws_name.lower():
-                    continue
-
-        matches = []
-        for row in all_values[1:]:
-            padded = row + [""] * max(0, len(headers) - len(row))
-            order_val = padded[col_index[order_col]].strip()
-            if not order_val.isdigit():
-                continue
-            order_num = int(order_val)
-            if not (lo <= order_num <= hi):
-                continue
-            title = padded[col_index["Title"]].strip()
-            if not title:
-                continue
-            year = clean(padded[col_index["Year"]]) if "Year" in col_index else ""
-            category = clean(padded[col_index["Category"]]) if "Category" in col_index else ""
-            rating = clean(padded[col_index["IMDB Rating"]]) if "IMDB Rating" in col_index else ""
-
-            # Per-row category filter for watch list sheets
-            if category_filter and is_watch and category.lower() != category_filter:
-                continue
-
-            matches.append((order_num, title, year, category, rating))
-
-        if matches:
-            matches.sort(key=lambda x: x[0])
-            sections.append((ws_name, matches))
-
-    if not sections:
-        suffix = f" in category '{category_filter.title()}'" if category_filter else ""
-        await update.message.reply_text(f"No movies found in rank range {lo}–{hi}{suffix}.")
-        return
-
-    cat_label = f" [{category_filter.title()}]" if category_filter else ""
-    lines = [f"<b>Ranked {lo}–{hi}{html(cat_label)}</b>\n"]
-    for ws_name, matches in sections:
-        lines.append(f"<b>{html(ws_name)}</b>")
-        for order_num, title, year, category, rating in matches:
-            parts = [f"  {order_num}. {html(title)}"]
-            if year:
-                parts.append(f"({html(year)})")
-            if category:
-                parts.append(f"[{html(category)}]")
-            if rating:
-                parts.append(f"★ {html(rating)}")
-            lines.append(" ".join(parts))
-        lines.append("")
-
-    msg = "\n".join(lines).strip()
-    if len(msg) <= 4000:
-        await update.message.reply_text(msg, parse_mode="HTML")
-    else:
-        for chunk in _send_chunked(lines, "\n"):
-            await update.message.reply_text(chunk, parse_mode="HTML")
 
 
 async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1184,7 +1071,6 @@ def main():
     app.add_handler(CommandHandler("omdb", cmd_omdb))
     app.add_handler(CommandHandler("find", cmd_find))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
-    app.add_handler(CommandHandler("ranked", cmd_ranked))
     app.add_handler(CommandHandler("addwatch", cmd_addwatch))
     app.add_handler(CommandHandler("setorder", cmd_setorder))
     app.add_handler(CommandHandler("watched", cmd_watched))
