@@ -65,7 +65,7 @@ HELP_TEXT = (
     "<b>Movie List Maintainer</b>\n\n"
     "/addwatch <code>&lt;title&gt; [category]</code> — Add to Watch List\n"
     "  Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
-    "/setorder <code>&lt;title&gt; &lt;rank&gt;</code> — Set Watch Order or Rank; use <code>4stars</code> / <code>4.5stars</code> for star ratings\n\n"
+    "/rank <code>&lt;title&gt; &lt;rank&gt;</code> — Set rank in Movies; use <code>4stars</code> / <code>4.5stars</code> for star ratings\n\n"
     "/watched <code>&lt;title&gt; [| note [| rank]]</code> — Remove from Watch List and add to Movies\n"
     "  Rank: plain number (e.g. <code>42</code>) or star rating (e.g. <code>4stars</code>, <code>4.5stars</code>)\n"
     "  If not in the Watch List, looks up on OMDb and adds directly to Movies\n\n"
@@ -74,7 +74,8 @@ HELP_TEXT = (
     "/find <code>&lt;title&gt;</code> — Search all sheets for a movie\n\n"
     "/omdb <code>&lt;title&gt;</code> — Look up OMDb info without modifying any sheet\n\n"
     "/watchlist <code>[category]</code> — Show the Watch List, optionally filtered by category\n\n"
-    "/random <code>[genre]</code> — Suggest a random movie from your Watch List, optionally filtered by genre\n\n"
+    "/random <code>[genre [| category]]</code> — Suggest a random movie from your Watch List\n"
+    "  Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
     "/help — Show this message"
 )
 
@@ -609,10 +610,10 @@ async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def cmd_setorder(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/setorder <title> <number> — Set Watch Order (watch lists) or Rank (main lists)."""
+async def cmd_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/rank <title> <rank> — Set rank in Movies."""
     if not context.args or len(context.args) < 2:
-        await update.message.reply_text("Usage: /setorder <title> <number>")
+        await update.message.reply_text("Usage: /rank <title> <rank>")
         return
 
     args = list(context.args)
@@ -621,7 +622,7 @@ async def cmd_setorder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if parsed_value is None:
         await update.message.reply_text(
             "The last argument must be a number (rank) or a star rating with the 'stars' suffix.\n"
-            "Examples: /setorder Alien 42  or  /setorder Alien 4stars  or  /setorder Alien 4.5stars"
+            "Examples: /rank Alien 42  or  /rank Alien 4stars  or  /rank Alien 4.5stars"
         )
         return
 
@@ -629,60 +630,49 @@ async def cmd_setorder(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         ss = get_spreadsheet()
+        ws = ss.worksheet("Movies")
     except Exception as err:
         await update.message.reply_text(f"Could not connect to sheet: {err}")
         return
 
-    title_lower = title.lower()
-    matches = []
-
-    for ws_name in WORKSHEET_NAMES:
-        try:
-            ws = ss.worksheet(ws_name)
-        except gspread.WorksheetNotFound:
-            continue
-        all_values = ws.get_all_values()
-        if not all_values:
-            continue
-        headers = all_values[0]
-        col_index = {h: i for i, h in enumerate(headers)}
-        if "Title" not in col_index:
-            continue
-        is_watch = WATCH_LIST_KEYWORD in ws_name
-        order_col = "Watch Order" if is_watch else "Rank"
-        if order_col not in col_index:
-            continue
-        for i, row in enumerate(all_values[1:], start=2):
-            padded = row + [""] * max(0, len(headers) - len(row))
-            if padded[col_index["Title"]].strip().lower() == title_lower:
-                old_val = padded[col_index[order_col]].strip()
-                canonical = padded[col_index["Title"]].strip()
-                matches.append((ws_name, ws, i, order_col, col_index[order_col], old_val, is_watch, canonical))
-
-    if not matches:
-        await update.message.reply_text(f"'{title}' not found in any sheet.")
+    all_values = ws.get_all_values()
+    if not all_values:
+        await update.message.reply_text("Movies sheet is empty.")
         return
 
-    sheet_value, value_display = parsed_value
-    lines = []
-    for ws_name, ws, row_num, order_col, col_idx, old_val, is_watch, canonical in matches:
-        # Watch Order must be an integer; skip star ratings for watch list sheets
-        if is_watch and not raw_value.isdigit():
-            lines.append(f"✗ {html(ws_name)}: Watch Order must be an integer — skipped.")
-            continue
-        stored = raw_value if is_watch else sheet_value
-        ws.update_cell(row_num, col_idx + 1, stored)
-        moved = not is_watch and _reposition_by_rank(ws, row_num, stored, canonical)
-        suffix = ", moved to correct row" if moved else ""
-        lines.append(f"✓ {html(ws_name)}: {order_col} → {html(stored)}{html(suffix)}")
-        old_display = old_val or "(blank)"
-        _append_log(ss, "Rank Changed", canonical, f"{ws_name}: {old_display} → {stored}")
+    headers = all_values[0]
+    col_index = {h: i for i, h in enumerate(headers)}
+    if "Title" not in col_index or "Rank" not in col_index:
+        await update.message.reply_text("Movies sheet is missing required columns.")
+        return
 
-    if len(matches) > 1:
-        prefix = f"Updated <b>{html(title)}</b>:\n"
-    else:
-        prefix = f"Updated <b>{html(title)}</b> in {html(matches[0][0])}:\n"
-    await update.message.reply_text(prefix + "\n".join(lines), parse_mode="HTML")
+    title_lower = title.lower()
+    match = None
+    for i, row in enumerate(all_values[1:], start=2):
+        padded = row + [""] * max(0, len(headers) - len(row))
+        if padded[col_index["Title"]].strip().lower() == title_lower:
+            match = (i, padded[col_index["Rank"]].strip(), padded[col_index["Title"]].strip())
+            break
+
+    if not match:
+        await update.message.reply_text(f"'{html(title)}' not found in Movies.", parse_mode="HTML")
+        return
+
+    row_num, old_val, canonical = match
+    sheet_value, value_display = parsed_value
+    ws.update_cell(row_num, col_index["Rank"] + 1, sheet_value)
+    _reposition_by_rank(ws, row_num, sheet_value, canonical)
+    _renumber_ranks(ws)
+    bumped: list[str] = []
+    if sheet_value.isdigit():
+        bumped = _enforce_200_limit(ss, ws)
+    old_display = old_val or "(blank)"
+    _append_log(ss, "Rank Changed", canonical, f"Movies: {old_display} → {sheet_value}")
+
+    msg_lines = [f"Updated <b>{html(canonical)}</b> in Movies: Rank → {html(sheet_value)}."]
+    for bt in bumped:
+        msg_lines.append(f"List full (200) — <b>{html(bt)}</b> moved to ★★★★★.")
+    await update.message.reply_text("\n".join(msg_lines), parse_mode="HTML")
 
 
 async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -934,8 +924,18 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/random [genre] — Suggest a random movie from the Watch List, optionally filtered by genre."""
-    genre_filter = " ".join(context.args).strip().lower() if context.args else ""
+    """/random [genre [| category]] — Suggest a random movie from the Watch List."""
+    text = " ".join(context.args).strip()
+    parts = [p.strip() for p in text.split("|")]
+    genre_filter = parts[0].lower() if parts[0] else ""
+    raw_category = parts[1].lower() if len(parts) > 1 else ""
+
+    category_filter = ""
+    use_tv = False
+    if raw_category == "tv":
+        use_tv = True
+    elif raw_category:
+        category_filter = CATEGORY_ALIASES.get(raw_category, raw_category.title())
 
     try:
         ss = get_spreadsheet()
@@ -943,9 +943,10 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Could not connect to sheet: {err}")
         return
 
+    tabs = [TV_WATCH_TAB] if use_tv else ["Watch List"]
     candidates = []
 
-    for ws_name in ["Watch List"]:
+    for ws_name in tabs:
         try:
             ws = ss.worksheet(ws_name)
         except gspread.WorksheetNotFound:
@@ -966,20 +967,24 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
             genre = clean(padded[col_index["Genre"]]) if "Genre" in col_index else ""
             if genre_filter and genre_filter not in genre.lower():
                 continue
+            category = clean(padded[col_index["Category"]]) if "Category" in col_index else ""
+            if category_filter and category != category_filter:
+                continue
             year = clean(padded[col_index["Year"]]) if "Year" in col_index else ""
             director = clean(padded[col_index["Director"]]) if "Director" in col_index else ""
-            category = clean(padded[col_index["Category"]]) if "Category" in col_index else ""
             imdb = clean(padded[col_index["IMDB Rating"]]) if "IMDB Rating" in col_index else ""
             candidates.append((title, year, director, genre, category, imdb, ws_name))
 
     if not candidates:
+        filters = []
         if genre_filter:
-            await update.message.reply_text(
-                f"No movies in your Watch List match the genre '<b>{html(genre_filter)}</b>'.",
-                parse_mode="HTML",
-            )
-        else:
-            await update.message.reply_text("Your Watch List is empty.")
+            filters.append(f"genre '{html(genre_filter)}'")
+        if use_tv:
+            filters.append("TV")
+        elif category_filter:
+            filters.append(f"category '{html(category_filter)}'")
+        suffix = f" matching {' and '.join(filters)}" if filters else ""
+        await update.message.reply_text(f"No movies in your Watch List{suffix}.", parse_mode="HTML")
         return
 
     title, year, director, genre, category, imdb, ws_name = random.choice(candidates)
@@ -996,7 +1001,7 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"IMDB Rating: {html(imdb)}")
     sheet_label = ws_name + (f" [{category}]" if category else "")
     lines.append(f"List: {html(sheet_label)}")
-    pool_note = f"({len(candidates)} {html(genre_filter) + ' ' if genre_filter else ''}title(s) in Watch List)"
+    pool_note = f"({len(candidates)} title(s) in pool)"
     lines.append(f"\n{pool_note}")
 
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
@@ -1072,7 +1077,7 @@ def main():
     app.add_handler(CommandHandler("find", cmd_find))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(CommandHandler("addwatch", cmd_addwatch))
-    app.add_handler(CommandHandler("setorder", cmd_setorder))
+    app.add_handler(CommandHandler("rank", cmd_rank))
     app.add_handler(CommandHandler("watched", cmd_watched))
     app.add_handler(CommandHandler("history", cmd_history))
     app.add_handler(CommandHandler("note", cmd_note))
