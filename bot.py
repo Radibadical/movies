@@ -126,14 +126,14 @@ TV_WATCH_TAB = "TV Watch List"
 HELP_TEXT = (
     "<b>Movie List Maintainer</b>\n\n"
     "/watched <code>&lt;title&gt; [| note [| rank]]</code> — Move from Watch List to Movies; adds directly if not on Watch List\n\n"
-    "/addwatch <code>&lt;title&gt; [category]</code> — Add to Watch List\n"
-    "  Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
+    "/addwatch <code>&lt;title&gt; [tag]</code> — Add to Watch List\n"
+    "  Tags: General, Weird, Dudeist, Horror, Documentary, Christmas, TV\n\n"
     "/rank <code>&lt;title&gt; | &lt;rank&gt;</code> — Set rank in Movies (<code>42</code>, <code>4stars</code>, <code>4.5stars</code>)\n\n"
     "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes\n\n"
     "/find <code>&lt;query&gt;</code> — Search all sheets\n\n"
     "/omdb <code>&lt;title&gt;</code> — Look up OMDb info without modifying any sheet\n\n"
-    "/watchlist <code>[category]</code> — Show the Watch List\n\n"
-    "/random <code>[genre [| category]]</code> — Suggest a random Watch List movie\n\n"
+    "/watchlist <code>[tag]</code> — Show the Watch List\n\n"
+    "/random <code>[genre [| tag]]</code> — Suggest a random Watch List movie\n\n"
     "/history <code>[n]</code> — Show recent rank changes and watched movies (default 10)\n\n"
     "/trend list — Show active rank trends\n"
     "/trend reset <code>&lt;title&gt;</code> — Clear the trend indicator for a movie\n\n"
@@ -567,7 +567,7 @@ async def cmd_find(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/watchlist [category] — Show the Watch List, optionally filtered by category."""
+    """/watchlist [tag] — Show the Watch List, optionally filtered by tag."""
     category_filter = " ".join(context.args).strip().lower() if context.args else ""
 
     try:
@@ -617,11 +617,11 @@ async def cmd_watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/addwatch <title> [category] — Add a movie to the Watch List."""
+    """/addwatch <title> [tag] — Add a movie to the Watch List."""
     if not context.args:
         await update.message.reply_text(
-            "Usage: /addwatch <title> [category]\n"
-            "Categories: General (default), Weird, Dudeist, Horror, Documentary, Christmas, TV"
+            "Usage: /addwatch <title> [tag]\n"
+            "Tags: General (default), Weird, Dudeist, Horror, Documentary, Christmas, TV"
         )
         return
 
@@ -1009,7 +1009,7 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/random [genre [| category]] — Suggest a random movie from the Watch List."""
+    """/random [genre [| tag]] — Suggest a random movie from the Watch List."""
     text = " ".join(context.args).strip()
     parts = [p.strip() for p in text.split("|")]
     genre_filter = parts[0].lower() if parts[0] else ""
