@@ -3,12 +3,15 @@
 ## Project overview
 
 This project maintains a Google Sheets movie list using OMDb data and exposes a
-Telegram bot for on-the-go updates. Two entry points:
+Telegram bot for on-the-go updates. One active entry point:
 
-- **`main.py`** — CLI script; run locally to bulk-fill OMDb data, merge watch list
-  tabs, deduplicate, fix title casing, renumber integer ranks, and sort star-rated rows.
 - **`bot.py`** — Telegram bot; runs as a systemd user service and handles all
-  interactive commands.
+  interactive commands including OMDb lookups, rank changes, and watch list management.
+
+`main.py` was deleted after its functions (OMDb bulk-fill, column normalization,
+deduplication, title casing, rank renumbering, star sorting) were superseded by
+the bot workflow. The Google Apps Script `history_trigger.gs` logs manual rank
+edits made directly in the sheet.
 
 ## Credentials & secrets
 
@@ -19,14 +22,15 @@ All secrets live in `.env` (git-ignored). Never commit `.env` or `credentials.js
 | `OMDB_API_KEY` | OMDb API key (free tier: 1,000 req/day) |
 | `SHEET_NAME` | Exact name of the Google Sheet |
 | `TELEGRAM_BOT_TOKEN` | From @BotFather |
+| `ALLOWED_USER_ID` | Telegram user ID; bot ignores all other users |
 
 `credentials.json` is a Google service-account key file. Both files are in `.gitignore`.
 
 ## Google Sheet structure
 
-One spreadsheet, multiple tabs managed by `WORKSHEET_NAMES` in `main.py`.
+One spreadsheet, multiple tabs managed by `WORKSHEET_NAMES` in `bot.py`.
 
-**Main list tabs** (columns: Rank, Title, Year, Director, Country, Genre, IMDB Rating, Metascore, Last Watched, Notes):
+**Main list tabs** (columns: Rank, Title, Year, Director, Country, Genre, Tags, IMDB Rating, Metascore, Last Watched, Notes):
 - Movies, Weird Movies, Dudeist Movies, Documentaries, Horror/Halloween, TV, Christmas
 
 **Rank column — two zones per sheet:**
@@ -35,57 +39,16 @@ One spreadsheet, multiple tabs managed by `WORKSHEET_NAMES` in `main.py`.
 - Sort order: numbered ranks ascending first, then star ratings descending, then alphabetical within the same star value.
 - Blank Rank cells (the separator row) are skipped during insertion scans — handled by `if r and _rank_sort_key(r) >= new_key`.
 
-**Watch list tab** (columns: Watch Order, Title, Year, Director, Country, Genre, IMDB Rating, Metascore, Category, Date Added, Notes):
-- Watch List — merged from multiple source tabs, each given a Category value
+**Watch list tab** (columns: Watch Order, Title, Year, Director, Country, Genre, Tags, IMDB Rating, Metascore, Date Added, Notes):
+- Watch List — unified watch list; Tags column used for per-movie labels
 - Date Added: ISO date (YYYY-MM-DD) auto-filled by `/addwatch`
 
-**TV watch list** (same columns as Watch List but no Category):
+**TV watch list** (same columns as Watch List, no Tags routing):
 - TV Watch List
 
 **History log tab** (columns: Date, Type, Title, Detail):
-- History — auto-created on first event; never in WORKSHEET_NAMES (not processed by main.py)
-- Type values: "Rank Changed" (from /setorder), "Watched" (from /watched)
-
-### Watch list merge
-
-When `main.py` detects multiple watch-list source tabs it calls `merge_watch_lists()`,
-which combines them into "Watch List" with a Category column, then deletes the source
-tabs. Defined in `WATCH_LIST_TABS`:
-
-```python
-WATCH_LIST_TABS = {
-    "Watch List": "General",
-    "Weird Watch List": "Weird",
-    "Dudeist Watch List": "Dudeist",
-    "Horror Watch List": "Horror",
-    "Documentaries Watch List": "Documentary",
-    "Christmas Watch List": "Christmas",
-}
-```
-
-**Important:** when reading rows from the "Watch List" tab itself during a merge,
-existing Category values are preserved (not overwritten with "General").
-
-## Running main.py
-
-```bash
-cd /home/jakedog/ghq/github.com/Radibadical/movies
-source .venv/bin/activate
-python main.py              # full run with OMDb API calls
-python main.py --skip-omdb  # normalize/merge/sort only, no API calls
-```
-
-`--skip-omdb` skips `collect_changes()` entirely — use when near the daily quota.
-
-**Per-tab processing order (non-watch-list sheets):**
-1. `normalize_columns` — add/reorder columns
-2. `dedup_titles` — remove duplicates
-3. `check_title_casing` — interactive title case prompts
-4. `renumber_ranks` — reassign integer ranks sequentially by row order
-5. `sort_star_rated_rows` — sort star-rated rows by rating desc, then title asc
-6. `collect_changes` / apply OMDb updates (skipped with `--skip-omdb`)
-
-Watch list tabs skip steps 4–5 and instead sort by Watch Order after OMDb updates.
+- History — auto-created on first event; not in WORKSHEET_NAMES
+- Type values: "Rank Changed" (from `/rank`, `/watched`, or the Apps Script trigger), "Watched" (from `/watched`), "Trend Reset" (from `/trend reset`)
 
 ## Telegram bot
 
@@ -129,11 +92,11 @@ Restart policy: `on-failure` with 10s delay.
 
 Valid tags are stored in `tags.json` and loaded at bot startup. The in-memory `VALID_TAGS` list and `VALID_TAGS_LOWER` dict are updated live by `/newtag` without requiring a restart.
 
-Current tags: Christmas, Dudeist, Guilty Pleasure, So Bad It's Good, WTF, Weird.
+Current tags: Christmas, Dudeist, Guilty Pleasure, Overrated, So Bad It's Good, WTF, Weird.
 
 `/addwatch` and `/watched` validate the tag against `VALID_TAGS_LOWER` (case-insensitive) and reject unknown tags with an error listing valid options. `/tag` does not validate — it accepts any string and appends it to the Tags field.
 
-Tags in watch list sheets are movie-specific labels (same as main list sheets). There is no longer a separate category concept — the Tags column serves both purposes.
+Tags in watch list sheets are movie-specific labels (same as main list sheets). There is no separate category concept — the Tags column serves both purposes.
 
 ### `/find` behaviour
 Searches every worksheet in the spreadsheet (including History) via `ss.worksheets()`,
@@ -190,17 +153,6 @@ The escape helper is named `html()` specifically because Python's `except X as e
 pattern creates a local binding that shadows outer names. `html` cannot be shadowed
 this way.
 
-### Column normalization
-
-`normalize_columns(ws, target_cols)` ensures columns exist in the correct order.
-
-- **Insert-only path** (no reordering needed): uses `ws.insert_cols([[col_name]], col=pos)`,
-  which calls `insertDimension` under the hood. Google Sheets Tables whose range is
-  intersected automatically expand — this is the table-safe path.
-- **Clear+rewrite path** (existing columns need reordering): clears and rewrites the
-  full sheet. Prints a warning to verify the Table range in Sheets afterward, since
-  the Table boundary does not automatically adjust on a full rewrite.
-
 ### Rank helpers (bot.py)
 
 ```python
@@ -227,7 +179,7 @@ Input disambiguation: plain number = numeric rank; `Nstars` or `N.5stars` = star
 ### Row repositioning after rank change
 
 `_reposition_by_rank(ws, row_num, stored_rank, canonical_title) -> bool` (bot.py):
-- Called by `/setorder` and `/watched` for non-watch-list sheets after updating the rank cell.
+- Called by `/rank` and `/watched` for non-watch-list sheets after updating the rank cell.
 - Re-reads all sheet values (capturing the already-updated rank and all other fields).
 - Finds the first row (skipping current) whose sort key ≥ new key; deletes current
   row and re-inserts at that position (offset adjusted for the deletion).
@@ -262,27 +214,15 @@ else:
 `_append_log(ss, event_type, title, detail)` (bot.py):
 - Lazy-creates the "History" tab with `LOG_COLUMNS = ["Date", "Type", "Title", "Detail"]`
   on first call. Silently swallows all errors so logging never breaks a command.
-- Called by `/setorder` ("Rank Changed") and `/watched` ("Watched").
+- Called by `/rank` ("Rank Changed") and `/watched` ("Watched" and "Rank Changed").
 
-### Deduplication
+### Rank renumbering and star sorting (bot.py)
 
-`dedup_titles(ws, headers)` deduplicates per `(title.lower(), category.lower())`.
-- One entry has notes → keep the noted one.
-- Both have notes → prompt interactively.
-- Neither has notes → keep first occurrence.
-
-### Title casing
-
-`check_title_casing(ws, headers)` applies Chicago-style title case with an interactive
-accept/reject prompt per title. Preserves acronym casing (e.g. "MCU" stays "MCU").
-
-### Rank renumbering and star sorting (main.py)
-
-`renumber_ranks(ws, headers)`: reassigns integer Rank values (1, 2, 3…) sequentially
+`_renumber_ranks(ws)`: reassigns integer Rank values (1, 2, 3…) sequentially
 by current row order. Skips star-rated and blank Rank cells. Batch `update_cells`.
 
-`sort_star_rated_rows(ws, headers)`: sorts rows containing `★`/`✮` in Rank by star
-value descending, then title alphabetically. Single batch write.
+`sort_star_rated_rows` logic is handled inline during `_reposition_by_rank` and
+`_enforce_200_limit` — there is no standalone sort function in bot.py.
 
 ## Dependencies
 
@@ -306,6 +246,7 @@ Sensitive files already ignored: `.env`, `credentials.json`, `__pycache__/`,
 **Branch:** `main`
 **File:** `index.html` (repo root)
 **Live URL:** https://radibadical.com/movies/
+**Local path:** `/home/jakedog/ghq/github.com/Radibadical/movies`
 
 A single-file static page deployed via GitHub Pages. No backend — reads directly
 from Google Sheets. The repo must be public for GitHub Pages to work on the free plan.
@@ -330,51 +271,55 @@ This exposes the spreadsheet ID in the source but does not expose your email add
 Edit `index.html` on `main` and push. GitHub Pages redeploys automatically within ~1 minute.
 
 ```bash
-# edit index.html
 git add index.html && git commit -m "..." && git push
 ```
 
 ### Page structure
 
-The page splits Movies into three sections via a tab nav:
+Four tabs rendered from a single data fetch:
 
-| Tab | URL hash | Filter |
+| Tab | URL hash | Content |
 |---|---|---|
 | 1–100 | `#top100` | Integer ranks 1–100 |
 | 101–200 | `#top200` | Integer ranks 101–200 |
 | ★ Rated | `#starred` | Rows with `★`/`✮` in Rank |
+| Recently Watched | `#history` | Last 30 Watched events from History tab |
 
-The hash is written to the URL on tab switch, so links like
-`/movies/#starred` deep-link to a specific section.
+The hash is written to the URL on tab switch, so links like `/movies/#starred`
+deep-link to a specific section. All data is fetched once and filtered client-side.
 
-All data is fetched once and filtered client-side — switching tabs makes no
-additional network requests.
-
-**Search** runs across all three sections regardless of which tab is active.
+**Search** runs across all sections regardless of which tab is active.
 Clearing the search returns to the active tab's filtered view.
+
+**Bottom nav** — each tab renders a nav row at the bottom (`buildBottomNav()`) with
+buttons for all four sections, so you can switch without scrolling back to the top.
 
 Both a desktop table and mobile card layout are rendered simultaneously;
 CSS hides the appropriate one at a 700px breakpoint. No JS resize handling needed.
 
-### Adding more sheets
-
-The page currently shows only the Movies sheet. To add other sheets:
-1. Add a new `<button class="page-tab">` in the nav HTML
-2. Add an entry to the `PAGES` object with a rank filter function
-3. Fetch the additional sheet and merge or handle separately
-
 ### Recently Watched tab
 
-The "Recently Watched" tab shows filtered History entries (Type = "Watched") enriched
-with full movie details from the already-loaded Movies CSV cache.
+`buildHistoryContent` builds a `movieLookup` dict keyed by lowercase title from the
+Movies CSV cache, then joins each History row to pull movie fields.
 
-- `buildHistoryContent` builds a `movieLookup` dict keyed by lowercase title from the
-  `cache` object, then joins each history row to pull movie fields.
-- Columns shown: Date Watched, Rank, Title, Year, Director, Country, Genre, IMDB Rating,
-  Metascore. Notes appear as a sub-row (desktop) or inline (mobile cards).
+- Columns shown: Date Watched, Rank, Title, Year, Director, Country, Genre, IMDB Rating, Metascore. Notes appear as a sub-row (desktop) or inline (mobile cards).
+- **Rewatch rank display:** if a Watched event has the string "rewatched" in its Detail
+  field and a same-date Rank Changed entry exists for the same title, the Rank column
+  shows `<old> → <new>` (old rank in grey, new in gold). Detected in `fetchHistory` via
+  `pendingRankChange` tracking; stored in `rewatchChanges["titleKey|date"]`.
 - "Type" and "Detail" columns from the History sheet are not shown in this view.
-- Mobile card layout matches the main movie list, with watch date appended to the
-  secondary info line.
+
+### Trend arrows
+
+Integer-ranked movies show an up/down arrow next to their rank if a "Rank Changed"
+event exists in the History tab within the last **year** (previously 30 days).
+
+- Computed in `fetchHistory()` → `rankChanges` object, keyed by lowercase title.
+- Suppressed per-title via `localStorage['movieTrends']` — clicking an arrow stores
+  the current rank; if History shows the same rank as stored, arrow is hidden.
+- `/trend reset <title>` in the bot appends a "Trend Reset" History entry, which
+  clears the arrow on next page load (independent of localStorage).
+- `/trend list` in the bot also uses a 1-year window.
 
 ### CSS style values (index.html)
 
@@ -384,6 +329,7 @@ Rank and title sizes are matched to avoid visual imbalance:
 |---|---|---|
 | `.col-rank` | 1.125rem | `#a07820` (brand gold) |
 | `.col-rank.stars` | 1.125rem | `#d4a017` |
+| `.rewatch-old` | 0.85em | `#484f58` (grey, for old rank in rewatch display) |
 | `.col-title` | 1.125rem | `#e6edf3` |
 | `.card-rank` | 1.25rem | `#a07820` (brand gold) |
 | `.card-rank.stars` | 1.25rem | `#d4a017` |
@@ -391,11 +337,16 @@ Rank and title sizes are matched to avoid visual imbalance:
 
 Brand gold `#a07820` matches the "Radibadical" byline color in the header.
 
-### Header
+### Header and favicon
 
 Title displays as "Radibadical / Top 200 Movies" with a "← radibadical" back link
-to the landing page. Star ratings use a CSS half-star technique: `✮` is replaced
-with `<span class="half-star">★</span>` — a grey star with the left 50% overlaid
+and an inline gold "R" SVG mark (`<svg class="site-icon">`).
+
+Favicon links point to root-relative paths (`/favicon.svg`, `/favicon.png`,
+`/apple-touch-icon.png`) served from `Radibadical/radibadical.github.io`.
+
+Star ratings use a CSS half-star technique: `✮` is replaced with
+`<span class="half-star">★</span>` — a grey star with the left 50% overlaid
 in gold via `::before`.
 
 ### Domain and hosting setup
@@ -409,8 +360,7 @@ Custom domain: `radibadical.com` — registered on Porkbun, DNS via Cloudflare.
 
 The `radibadical.github.io` repo is a full landing page with cards linking to
 each project. Future projects get their own repos and automatically appear at
-`radibadical.com/<reponame>` with no extra DNS configuration. Subpages within
-`radibadical.github.io` (e.g. `spotify/index.html`) serve at `radibadical.com/spotify/`.
+`radibadical.com/<reponame>` with no extra DNS configuration.
 
 DNS records on Porkbun:
 - **ALIAS** `radibadical.com` → `radibadical.github.io`

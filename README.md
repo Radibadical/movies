@@ -1,115 +1,71 @@
 # Movie List Maintainer
 
-Keeps a Google Sheets movie list up to date with OMDb data and provides a
-Telegram bot for on-the-go additions and edits.
+A personal movie tracking system built on Google Sheets, with a Telegram bot for on-the-go updates and a public web UI.
 
-Two entry points:
-
-- **`main.py`** — CLI script; bulk-fills OMDb fields, merges watch list tabs,
-  deduplicates titles, fixes title casing, renumbers integer ranks, sorts
-  star-rated rows.
-- **`bot.py`** — Telegram bot; runs as a persistent background service and
-  handles all interactive commands.
+**Web UI:** [radibadical.com/movies](https://radibadical.com/movies/)
 
 ---
 
-## Features
+## What it does
 
-- Fills **Year**, **Director**, **Country**, **Genre**, **IMDB Rating**, and
-  **Metascore** via the [OMDb API](https://www.omdbapi.com/)
-- Never touches **Rank**, **Notes**, **Title**, **Watch Order**, **Date Added**,
-  or **Last Watched**
-- Supports multiple worksheet tabs in a single spreadsheet
-- Merges category-specific watch list tabs (Weird, Horror, etc.) into one
-  unified **Watch List** tab with a **Category** column
-- Deduplicates titles per sheet (keeps noted entries; prompts when both have notes)
-- Chicago-style title case correction with interactive prompts
-- Renumbers integer ranks sequentially based on row order
-- Sorts star-rated rows by rating (descending) then title (alphabetical)
-- `--skip-omdb` flag to run without API calls (normalize, merge, sort only)
+- Maintains a ranked list of up to 200 movies, with star ratings for the rest
+- Pulls **Year**, **Director**, **Country**, **Genre**, **IMDB Rating**, and **Metascore** from the [OMDb API](https://www.omdbapi.com/) automatically
+- Tracks a **Watch List** (with a separate TV Watch List)
+- Logs every rank change and watch event in a History tab
+- Exposes everything through a Telegram bot
 
 ---
 
-## Sheet structure
+## Bot commands
 
-### Main list tabs
-
-Columns: `Rank | Title | Year | Director | Country | Genre | IMDB Rating | Metascore | Last Watched | Notes`
-
-Default tabs: Movies, Weird Movies, Dudeist Movies, Documentaries,
-Horror/Halloween, TV, Christmas
-
-**Rank column — two zones:**
-
-- **Numbered ranks (1–200)**: stored inside a Google Sheets Table. Rows are
-  renumbered sequentially by `main.py` based on their current row order.
-- **Star ratings**: regular rows below the table, separated by a blank row.
-  Format: `★ ★ ★ ★ ✮` (full stars + optional `✮` half-star, space-separated).
-  Valid values: 5, 4.5, 4, 3.5, 3, 2.5.
-- Sort order: numbered ranks ascending first, then star ratings descending, then
-  alphabetical within the same star value.
-
-### Watch List tab
-
-Columns: `Watch Order | Title | Year | Director | Country | Genre | IMDB Rating | Metascore | Category | Date Added | Notes`
-
-A single **Watch List** tab holds everything, with a **Category** column to
-distinguish General / Weird / Dudeist / Horror / Documentary / Christmas entries.
-The CLI will detect and merge separate category-specific watch list tabs
-(e.g. "Weird Watch List") automatically on first run.
-
-**Date Added** is auto-filled (ISO format `YYYY-MM-DD`) when `/addwatch` is used.
-
-### TV Watch List tab
-
-Same column layout as Watch List (no Category), managed separately.
-
-### History tab
-
-Columns: `Date | Type | Title | Detail`
-
-Auto-created on first rank change or `/watched` event. Logs:
-- **Rank Changed** — title, old rank → new rank
-- **Watched** — title, sheet it was added to
+| Command | Description |
+|---|---|
+| `/addwatch <title> [| tag]` | Add to Watch List; use `tv` as tag for TV Watch List |
+| `/watched <title> [| note [| rank [| tag]]]` | Move from Watch List to Movies; stamps Last Watched |
+| `/rank <title> | <rank>` | Set rank (`42`, `4stars`, `4.5stars`) |
+| `/tag <title> | <tag>` | Append a tag to a movie's Tags field |
+| `/newtag <tag>` | Add a new valid tag (saved to `tags.json`) |
+| `/note <title> | <note>` | Add or update the Notes field |
+| `/find <query>` | Search all tabs and all columns |
+| `/omdb <title>` | OMDb lookup without touching any sheet |
+| `/watchlist [tag]` | Show the Watch List, optionally filtered by tag |
+| `/random [genre [| tag]]` | Suggest a random movie from the Watch List |
+| `/history [n]` | Show last n rank changes and watched events (default 10) |
+| `/trend list` | Show movies whose rank changed in the last year |
+| `/trend reset <title>` | Clear the trend arrow for a movie on the web UI |
+| `/help` | Show help |
 
 ---
 
-## Setup
+## Web UI
 
-### 1. Get a free OMDb API key
+A single-file static page (`index.html`) served via GitHub Pages. Reads directly from Google Sheets — no backend.
 
-1. Go to https://www.omdbapi.com/apikey.aspx
-2. Choose the **Free** tier (1,000 requests/day)
-3. Check your email and click the activation link
+**Tabs:** 1–100 · 101–200 · ★ Rated · Recently Watched
 
-### 2. Google Cloud setup
+Features: full-text search, responsive desktop table + mobile card layout, rank trend arrows, rewatch before/after rank display, deep-linkable URL hashes (`#top100`, `#starred`, etc.).
 
-#### 2a. Create a project
+---
 
-1. Go to https://console.cloud.google.com
-2. Click the project dropdown → **New Project** → name it → **Create**
+## Setup (self-hosting)
 
-#### 2b. Enable APIs
+### 1. OMDb API key
 
-1. **APIs & Services → Library**
-2. Enable **Google Sheets API**
-3. Enable **Google Drive API**
+Get a free key at [omdbapi.com/apikey.aspx](https://www.omdbapi.com/apikey.aspx) (1,000 req/day).
 
-#### 2c. Create a Service Account
+### 2. Google Cloud
 
-1. **APIs & Services → Credentials → Create Credentials → Service Account**
-2. Give it a name → **Create and Continue → Done**
-3. Click the service account → **Keys → Add Key → Create new key → JSON**
-4. Move the downloaded `credentials.json` into this project folder
+1. Create a project at [console.cloud.google.com](https://console.cloud.google.com)
+2. Enable **Google Sheets API** and **Google Drive API**
+3. Create a **Service Account** → add a JSON key → save as `credentials.json` in this folder
+4. Share your Google Sheet with the service account's `client_email` as **Editor**
 
-> `credentials.json` is in `.gitignore` and will never be committed.
+### 3. Telegram bot
 
-#### 2d. Share your Google Sheet with the service account
+1. Message [@BotFather](https://t.me/BotFather) → `/newbot`
+2. Copy the token into `.env`
 
-1. Copy the `client_email` from `credentials.json`
-2. Open your Google Sheet → **Share** → paste the email → **Editor** → **Share**
-
-### 3. Install dependencies
+### 4. Install and configure
 
 ```bash
 python3 -m venv .venv
@@ -117,103 +73,46 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment
-
-Copy `.env.example` to `.env` (or create it) and fill in your values:
+Create `.env`:
 
 ```ini
-OMDB_API_KEY="your_omdb_key"
-SHEET_NAME="Your Google Sheet Name"
-TELEGRAM_BOT_TOKEN="your_bot_token"   # only needed for the bot
+OMDB_API_KEY=your_key
+SHEET_NAME=Your Sheet Name
+TELEGRAM_BOT_TOKEN=your_token
+ALLOWED_USER_ID=your_telegram_user_id
 ```
 
-### 5. Edit worksheet tabs (optional)
-
-Open `main.py` and update `DEFAULT_WORKSHEETS` to match your tab names:
-
-```python
-DEFAULT_WORKSHEETS = [
-    "Movies",
-    "Weird Movies",
-    "Dudeist Movies",
-    "Documentaries",
-    "Horror/Halloween",
-    "TV",
-    "Watch List",
-    "TV Watch List",
-    "Christmas",
-]
-```
-
----
-
-## Running the CLI
+### 5. Run the bot
 
 ```bash
 source .venv/bin/activate
-
-# Full run — fetch OMDb data for every sheet
-python main.py
-
-# Skip OMDb calls — only normalize columns, merge watch lists, sort
-python main.py --skip-omdb
+python bot.py
 ```
 
-For each tab the script will:
-
-1. Normalize column order (add missing columns, report reorders)
-2. Deduplicate titles (prompt when both copies have notes)
-3. Check title casing and prompt to accept/reject each suggestion
-4. For main list tabs: renumber integer ranks and sort star-rated rows
-5. Fetch OMDb data for rows with empty fields (unless `--skip-omdb`)
-6. Preview all proposed changes and ask `[y/N]` before writing
-7. Sort watch list tabs by Watch Order
-
----
-
-## Telegram Bot
-
-### Register with BotFather
-
-1. Open Telegram and message [@BotFather](https://t.me/BotFather)
-2. Send `/newbot` and follow the prompts
-3. Copy the token into your `.env` as `TELEGRAM_BOT_TOKEN`
-
-### Run as a systemd service (Linux)
+Or as a systemd user service:
 
 ```bash
-# Install service file
 cp movie-list-bot.service ~/.config/systemd/user/
-
-# Enable and start
 systemctl --user daemon-reload
-systemctl --user enable movie-list-bot.service
-systemctl --user start movie-list-bot.service
-
-# Check status / logs
-systemctl --user status movie-list-bot.service
-journalctl --user -u movie-list-bot.service -f
+systemctl --user enable --now movie-list-bot.service
 ```
-
-### Bot commands
-
-| Command | Description |
-|---|---|
-| `/addwatch <title> [category]` | Add to Watch List (fetches OMDb data, records Date Added). Categories: General, Weird, Dudeist, Horror, Documentary, Christmas, TV |
-| `/setorder <title> <rank>` | Set Watch Order or Rank; plain number = numeric rank (`4`), `4stars`/`4.5stars` = star rating. Repositions the row to its sorted position. |
-| `/watched <title> [| sheet [| note [| rank]]]` | Remove from Watch List; optionally move to a main sheet with a note and rank. Falls back to OMDb if movie isn't in the watch list. Stamps Last Watched date. |
-| `/history [n]` | Show last n rank changes and watched events (default 10) |
-| `/note <title> | <note text>` | Add or update the Notes field |
-| `/find <title>` | Substring search across all sheets with full field display |
-| `/omdb <title>` | OMDb lookup without modifying any sheet |
-| `/watchlist [category]` | Show the Watch List, optionally filtered by category |
-| `/ranked <start> <end> [category]` | Show movies in a rank/watch-order range, grouped by sheet. Optional category filter (e.g. `/ranked 1 10 Weird`) |
-| `/help` | Show command reference |
 
 ---
 
-## Security notes
+## Sheet structure
 
-- `.env` and `credentials.json` are in `.gitignore` — never commit them
-- The bot responds to any Telegram user by default; restrict access by chat ID
-  if you want to keep it private
+| Tab | Columns |
+|---|---|
+| Movies (and other main tabs) | Rank, Title, Year, Director, Country, Genre, Tags, IMDB Rating, Metascore, Last Watched, Notes |
+| Watch List | Watch Order, Title, Year, Director, Country, Genre, Tags, IMDB Rating, Metascore, Date Added, Notes |
+| TV Watch List | same as Watch List |
+| History | Date, Type, Title, Detail |
+
+Ranks are either integers (1–200, inside a Sheets Table) or star strings (`★ ★ ★ ★ ✮`).
+
+---
+
+## Security
+
+`credentials.json` and `.env` are in `.gitignore` and are never committed.
+The bot ignores all Telegram users except the one configured in `ALLOWED_USER_ID`.
