@@ -1169,7 +1169,7 @@ async def cmd_trend(update: Update, context: ContextTypes.DEFAULT_TYPE):
         headers = all_values[0]
         col_index = {h: i for i, h in enumerate(headers)}
 
-        cutoff = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+        cutoff = (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
 
         # Build most recent rank change per title within 30 days
         rank_changes: dict[str, dict] = {}
@@ -1218,7 +1218,7 @@ async def cmd_trend(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("No active rank trends in the last 30 days.")
             return
 
-        lines = [f"<b>Active Trends</b> (last 30 days)\n"]
+        lines = [f"<b>Active Trends</b> (last year)\n"]
         for v in sorted(active.values(), key=lambda x: x["date"], reverse=True):
             direction = "↑" if v["new"] < v["old"] else "↓"
             delta = abs(v["new"] - v["old"])

@@ -121,7 +121,7 @@ Restart policy: `on-failure` with 10s delay.
 | `/watchlist [tag]` | Show Watch List, optionally filtered by tag |
 | `/random [genre [| tag]]` | Suggest a random movie from the Watch List; optional genre and tag filters |
 | `/history [n]` | Show last n rank changes and watched events (default 10, max 50) |
-| `/trend list` | Show active rank trends (last 30 days) |
+| `/trend list` | Show active rank trends (last year) |
 | `/trend reset <title>` | Clear the trend indicator for a movie |
 | `/help` | Show help message |
 

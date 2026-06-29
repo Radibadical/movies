@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Radibadical Top 200 Movies</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -43,6 +44,12 @@
       background: #2d5a8e;
     }
     .title-text { text-align: center; flex-shrink: 0; }
+    .site-icon {
+      width: 2.25rem;
+      height: 2.25rem;
+      flex-shrink: 0;
+    }
+
     .title-byline {
       font-size: 0.7rem;
       font-weight: 600;
@@ -306,7 +313,7 @@
 
     @media (max-width: 699px) {
       .table-wrap { display: none; }
-      header, .toolbar, .page-nav { padding-left: 1rem; padding-right: 1rem; }
+      header, .toolbar, .page-nav, .bottom-nav { padding-left: 1rem; padding-right: 1rem; }
       .search { width: 100%; }
     }
 
@@ -325,6 +332,18 @@
     .h-arrow-down { color: #f85149; font-weight: 700; cursor: pointer; }
     .col-rank .h-arrow-up, .col-rank .h-arrow-down,
     .card-rank .h-arrow-up, .card-rank .h-arrow-down { font-size: 0.6rem; }
+
+    /* ── Rewatch rank ── */
+    .rewatch-old { color: #484f58; font-size: 0.85em; }
+
+    /* ── Bottom nav ── */
+    .bottom-nav {
+      display: flex;
+      padding: 0 2rem 1.5rem;
+      border-top: 1px solid #21262d;
+      gap: 0.25rem;
+      margin-top: 0.5rem;
+    }
   </style>
 </head>
 <body>
@@ -333,6 +352,11 @@
   <a class="back" href="/">&#8592; radibadical</a>
   <div class="site-title">
     <span class="title-rule"></span>
+    <svg class="site-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="5" fill="#0d1117"/>
+      <text x="16" y="25" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+            font-size="26" font-weight="700" fill="#a07820">R</text>
+    </svg>
     <div class="title-text">
       <div class="title-byline">Radibadical</div>
       <div class="title-main">Top 200 Movies</div>
@@ -618,9 +642,23 @@ function buildCards({ cols, rows }) {
   return html;
 }
 
+// ── Bottom nav ────────────────────────────────────────────────────────────────
+function buildBottomNav() {
+  const pages = [
+    { id: 'top100',  label: '1–100' },
+    { id: 'top200',  label: '101–200' },
+    { id: 'starred', label: '★ Rated' },
+    { id: 'history', label: 'Recently Watched' },
+  ];
+  const btns = pages.map(p =>
+    `<button class="page-tab${p.id === activePage ? ' active' : ''}" onclick="setPage('${p.id}')">${p.label}</button>`
+  ).join('');
+  return `<nav class="bottom-nav">${btns}</nav>`;
+}
+
 // ── Render ────────────────────────────────────────────────────────────────────
 function render(data) {
-  document.getElementById('content').innerHTML = buildTable(data) + buildCards(data);
+  document.getElementById('content').innerHTML = buildTable(data) + buildCards(data) + buildBottomNav();
 }
 
 // ── Page switching ────────────────────────────────────────────────────────────
@@ -684,45 +722,71 @@ async function fetchHistory() {
   const watchedRows = allRows.filter(r => (r[ci['Type']] || '') === 'Watched');
   const entries = watchedRows.slice(-HISTORY_LIMIT).reverse();
 
-  // Main list arrows: most recent rank change per title, numeric 1-200 only, within 30 days.
+  // Main list arrows: most recent rank change per title, numeric 1-200 only, within 1 year.
   // Process history in row order so a Rank Changed that follows a Trend Reset shows an arrow.
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 30);
+  cutoff.setFullYear(cutoff.getFullYear() - 1);
   const trends = JSON.parse(localStorage.getItem('movieTrends') || '{}');
   const changes = {};
+
+  // Rewatch rank tracking: detect Watched events that have a same-date Rank Changed entry.
+  const rewatchChanges = {}; // "titleKey|date" → {oldRank, newRank}
+  const pendingRankChange = {}; // titleKey → {oldRank, newRank, date}
+
   for (const row of allRows) {
     const type = row[ci['Type']] || '';
     const titleKey = (row[ci['Title']] || '').toLowerCase();
+    const rowDateStr = row[ci['Date']] || '';
+    const detail = row[ci['Detail']] || '';
 
     if (type === 'Trend Reset') {
       delete changes[titleKey];
       continue;
     }
 
-    if (type !== 'Rank Changed') continue;
-    const rowDate = new Date(row[ci['Date']] || '');
-    if (isNaN(rowDate) || rowDate < cutoff) continue;
-    const detail = row[ci['Detail']] || '';
-    if (detail.includes('Watch List')) continue;
-    const ai = detail.lastIndexOf('→');
-    if (ai === -1) continue;
-    const newStr = detail.slice(ai + 1).trim();
-    if (!/^\d+$/.test(newStr)) continue;
-    const newN = parseInt(newStr, 10);
-    if (newN < 1 || newN > 200) continue;
-    const before = detail.slice(0, ai).trim();
-    const oldStr = before.split(/[\s:]+/).pop();
-    const oldN = parseInt(oldStr, 10);
-    if (!Number.isFinite(oldN) || oldN === newN) continue;
-    if (trends[titleKey] === newN) continue;
-    changes[titleKey] = { oldN, newN, changeDate: row[ci['Date']] || '' };
+    if (type === 'Rank Changed') {
+      // Track for rewatch rank display (all rank changes, not just integer 1-200)
+      const ai = detail.lastIndexOf('→');
+      if (ai !== -1) {
+        const newRank = detail.slice(ai + 1).replace(/\(.*\)/, '').trim();
+        const beforeArrow = detail.slice(0, ai).trim();
+        const colonIdx = beforeArrow.indexOf(':');
+        const oldRank = colonIdx !== -1 ? beforeArrow.slice(colonIdx + 1).trim() : beforeArrow;
+        pendingRankChange[titleKey] = { oldRank, newRank, date: rowDateStr };
+      }
+
+      // Main list trend arrows: integer ranks 1-200 only, within 1 year
+      if (detail.includes('Watch List')) continue;
+      const rowDate = new Date(rowDateStr);
+      if (isNaN(rowDate) || rowDate < cutoff) continue;
+      const arrowIdx = detail.lastIndexOf('→');
+      if (arrowIdx === -1) continue;
+      const newStr = detail.slice(arrowIdx + 1).trim();
+      if (!/^\d+$/.test(newStr)) continue;
+      const newN = parseInt(newStr, 10);
+      if (newN < 1 || newN > 200) continue;
+      const before = detail.slice(0, arrowIdx).trim();
+      const oldStr = before.split(/[\s:]+/).pop();
+      const oldN = parseInt(oldStr, 10);
+      if (!Number.isFinite(oldN) || oldN === newN) continue;
+      if (trends[titleKey] === newN) continue;
+      changes[titleKey] = { oldN, newN, changeDate: rowDateStr };
+      continue;
+    }
+
+    if (type === 'Watched' && detail.includes('rewatched')) {
+      const rc = pendingRankChange[titleKey];
+      if (rc && rc.date === rowDateStr) {
+        rewatchChanges[titleKey + '|' + rowDateStr] = { oldRank: rc.oldRank, newRank: rc.newRank };
+      }
+    }
   }
 
-  return { entries, total: watchedRows.length, ci, rankChanges: changes };
+  return { entries, total: watchedRows.length, ci, rankChanges: changes, rewatchChanges };
 }
 
-function buildHistoryContent({ entries, total, ci }) {
-  if (!entries.length) return '<div class="empty">No history yet.</div>';
+function buildHistoryContent({ entries, total, ci, rewatchChanges = {} }) {
+  if (!entries.length) return '<div class="empty">No history yet.</div>' + buildBottomNav();
 
   // Build title → movie row lookup from the already-loaded Movies cache
   const movieLookup = {};
@@ -751,25 +815,40 @@ function buildHistoryContent({ entries, total, ci }) {
   };
   const head = HIST_COLS.map(c => `<th class="${thClass[c] || ''}">${esc(c)}</th>`).join('');
 
+  function renderRankCell(rank, rw, tdClass) {
+    if (rw) {
+      const oldHtml = isStarRank(rw.oldRank) ? renderStars(rw.oldRank) : esc(rw.oldRank);
+      const newHtml = isStarRank(rw.newRank) ? renderStars(rw.newRank) : esc(rw.newRank);
+      const cls = isStarRank(rw.newRank) ? `${tdClass} stars` : tdClass;
+      return `<span class="rewatch-old">${oldHtml}</span> → ${newHtml}`;
+    }
+    if (isStarRank(rank)) return renderStars(rank);
+    return esc(rank);
+  }
+
   let body = '';
   for (const row of entries) {
-    const date  = fmtDate(row[ci['Date']] || '');
-    const title = getMov(row, 'Title') || esc(row[ci['Title']] || '');
-    const rank  = getMov(row, 'Rank');
-    const year  = getMov(row, 'Year');
-    const dir   = getMov(row, 'Director');
-    const cntry = getMov(row, 'Country');
-    const genre = getMov(row, 'Genre');
-    const imdb  = getMov(row, 'IMDB Rating');
-    const meta  = getMov(row, 'Metascore');
-    const note  = getMov(row, 'Notes');
+    const histKey = (row[ci['Title']] || '').toLowerCase() + '|' + (row[ci['Date']] || '');
+    const rw      = rewatchChanges[histKey] || null;
+    const date    = fmtDate(row[ci['Date']] || '');
+    const title   = getMov(row, 'Title') || esc(row[ci['Title']] || '');
+    const rank    = getMov(row, 'Rank');
+    const year    = getMov(row, 'Year');
+    const dir     = getMov(row, 'Director');
+    const cntry   = getMov(row, 'Country');
+    const genre   = getMov(row, 'Genre');
+    const imdb    = getMov(row, 'IMDB Rating');
+    const meta    = getMov(row, 'Metascore');
+    const note    = getMov(row, 'Notes');
 
     const tds = HIST_COLS.map(c => {
       switch (c) {
-        case 'Date Watched':  return `<td class="col-watched">${esc(date)}</td>`;
-        case 'Rank':
-          if (isStarRank(rank)) return `<td class="col-rank stars" title="${starLabel(rank)}">${renderStars(rank)}</td>`;
-          return `<td class="col-rank">${esc(rank)}</td>`;
+        case 'Date Watched': return `<td class="col-watched">${esc(date)}</td>`;
+        case 'Rank': {
+          const rankCls = (!rw && isStarRank(rank)) ? 'col-rank stars' : 'col-rank';
+          const rankTitleAttr = (!rw && isStarRank(rank)) ? ` title="${starLabel(rank)}"` : '';
+          return `<td class="${rankCls}"${rankTitleAttr}>${renderRankCell(rank, rw, 'col-rank')}</td>`;
+        }
         case 'Title':        return `<td class="col-title">${esc(title)}</td>`;
         case 'Year':         return `<td class="col-year">${esc(year)}</td>`;
         case 'Director':     return `<td class="col-director">${esc(dir)}</td>`;
@@ -793,23 +872,34 @@ function buildHistoryContent({ entries, total, ci }) {
 
   out += '<div class="cards">';
   for (const row of entries) {
-    const date  = fmtDate(row[ci['Date']] || '');
-    const title = getMov(row, 'Title') || (row[ci['Title']] || '');
-    const rank  = getMov(row, 'Rank');
-    const year  = getMov(row, 'Year');
-    const dir   = getMov(row, 'Director');
-    const genre = getMov(row, 'Genre');
-    const tags  = getMov(row, 'Tags');
-    const imdb  = getMov(row, 'IMDB Rating');
-    const note  = getMov(row, 'Notes');
+    const histKey = (row[ci['Title']] || '').toLowerCase() + '|' + (row[ci['Date']] || '');
+    const rw      = rewatchChanges[histKey] || null;
+    const date    = fmtDate(row[ci['Date']] || '');
+    const title   = getMov(row, 'Title') || (row[ci['Title']] || '');
+    const rank    = getMov(row, 'Rank');
+    const year    = getMov(row, 'Year');
+    const dir     = getMov(row, 'Director');
+    const genre   = getMov(row, 'Genre');
+    const tags    = getMov(row, 'Tags');
+    const imdb    = getMov(row, 'IMDB Rating');
+    const note    = getMov(row, 'Notes');
 
-    const rankClass = isStarRank(rank) ? 'card-rank stars' : 'card-rank';
-    const rankTitle = isStarRank(rank) ? ` title="${starLabel(rank)}"` : '';
     const secondary = [year, dir, date].filter(Boolean).join(' · ');
+    let rankDiv;
+    if (rw) {
+      const oldHtml = isStarRank(rw.oldRank) ? renderStars(rw.oldRank) : esc(rw.oldRank);
+      const newHtml = isStarRank(rw.newRank) ? renderStars(rw.newRank) : esc(rw.newRank);
+      const cls = isStarRank(rw.newRank) ? 'card-rank stars' : 'card-rank';
+      rankDiv = `<div class="${cls}"><span class="rewatch-old">${oldHtml}</span> → ${newHtml}</div>`;
+    } else {
+      const rankClass = isStarRank(rank) ? 'card-rank stars' : 'card-rank';
+      const rankTitleAttr = isStarRank(rank) ? ` title="${starLabel(rank)}"` : '';
+      rankDiv = `<div class="${rankClass}"${rankTitleAttr}>${isStarRank(rank) ? renderStars(rank) : esc(rank)}</div>`;
+    }
 
     out += `<div class="card">
       <div class="card-header">
-        <div class="${rankClass}"${rankTitle}>${isStarRank(rank) ? renderStars(rank) : esc(rank)}</div>
+        ${rankDiv}
         <div class="card-body">
           <div class="card-title">${esc(title)}</div>
           ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
@@ -823,6 +913,7 @@ function buildHistoryContent({ entries, total, ci }) {
   }
   out += '</div>';
 
+  out += buildBottomNav();
   return out;
 }
 
