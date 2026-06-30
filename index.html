@@ -655,7 +655,7 @@ function render(data) {
 // ── Page switching ────────────────────────────────────────────────────────────
 function setPage(pageId) {
   activePage = pageId;
-  location.hash = pageId;
+  history.replaceState(null, '', '#' + pageId);
   document.querySelectorAll('.page-tab').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.page === pageId)
   );
