@@ -642,7 +642,7 @@ function buildBottomNav() {
     { id: 'history', label: 'Recently Watched' },
   ];
   const btns = pages.map(p =>
-    `<button class="page-tab${p.id === activePage ? ' active' : ''}" onclick="setPage('${p.id}')">${p.label}</button>`
+    `<button class="page-tab${p.id === activePage ? ' active' : ''}" onclick="setPage('${p.id}'); window.scrollTo(0,0)">${p.label}</button>`
   ).join('');
   return `<nav class="bottom-nav">${btns}</nav>`;
 }
