@@ -117,10 +117,15 @@ regardless of type) and reject unknown tags with an error listing valid options.
 and `/untag` do not validate — they accept any string; an untyped tag just renders with
 the default grey badge on the web UI instead of a Vibe/Style/Category color.
 
-**`index.html` duplicates the vibe/style/category classification by hand** (`CATEGORY_CLASS`,
-`VIBE_TAGS`, `STYLE_TAGS` in the JS) since the static page never fetches `tags.json` —
-only the Google Sheets CSV export. Adding or reclassifying a tag in `tags.json` requires
-a matching edit in `index.html` for the color to show up on the web UI.
+**`index.html` fetches `tags.json` directly** (`fetchTags()`, alongside the Google Sheets
+CSV export) and builds `TAG_LOOKUP` — a lowercase-tag-name → `{type, color}` map — at load
+time. `renderTags()` reads that map: Vibe/Style tags get the shared `.tag-vibe`/`.tag-style`
+CSS class, Category tags get an inline `color-mix(in srgb, <hex> 18%, #0d1117)` background
+computed from their `tags.json` color, and anything not in the map falls back to
+`.tag-default` (grey). No manual sync — a tag added or reclassified via `/newtag` shows up
+on the web UI on next page load, no `index.html` edit required. (This was a real bug once:
+`/newtag Atmospheric | style` didn't show pink until a hardcoded JS set was hand-updated —
+that's what led to switching to a live `tags.json` fetch instead of a duplicated map.)
 
 ### `/find` behaviour
 Searches every worksheet in the spreadsheet (including History) via `ss.worksheets()`,

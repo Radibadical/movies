@@ -5,7 +5,9 @@
     "Surrealist",
     "Satirical"
   ],
-  "style": [],
+  "style": [
+    "Atmospheric"
+  ],
   "category": {
     "Christmas": "#4ade80",
     "WTF": "#f87171",

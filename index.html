@@ -203,16 +203,11 @@
       letter-spacing: 0.05em; padding: 0.1rem 0.4rem;
       border-radius: 999px; text-transform: uppercase;
     }
+    /* Vibe/Style share one color per type; Category tags get an inline
+       color-mix() background computed from their tags.json hex at render
+       time (see renderTags/fetchTags), so no per-tag class is needed here. */
     .tag-vibe             { background: #0d2137; color: #60a5fa; }
     .tag-style            { background: #3d1a2a; color: #f472b6; }
-    .tag-weird            { background: #2d1a4a; color: #c084fc; }
-    .tag-dudeist          { background: #2d2410; color: #d4b96a; }
-    .tag-christmas        { background: #0d2a18; color: #4ade80; }
-    .tag-guilty-pleasure  { background: #0d2d2a; color: #2dd4bf; }
-    .tag-so-bad           { background: #2d1a0d; color: #fb923c; }
-    .tag-wtf              { background: #2d0d0d; color: #f87171; }
-    .tag-overrated        { background: #1e293b; color: #94a3b8; }
-    .tag-rewatch          { background: #0d2a2d; color: #22d3ee; }
     .tag-default          { background: #21262d; color: #8b949e; }
     .card-tags      { margin-top: 0.3rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
     .col-year     { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
@@ -397,32 +392,41 @@ let rankChanges  = {};
 let query        = '';
 let activePage = 'top100';
 
-// Category tags each get their own class/color; Vibe and Style tags share one
-// color per type instead. Keep in sync with tags.json (not fetched by this
-// static page, so the classification is duplicated here by hand).
-const CATEGORY_CLASS = {
-  weird: 'tag-weird',
-  dudeist: 'tag-dudeist',
-  christmas: 'tag-christmas',
-  'guilty pleasure': 'tag-guilty-pleasure',
-  'so bad it\'s good': 'tag-so-bad',
-  wtf: 'tag-wtf',
-  overrated: 'tag-overrated',
-  rewatch: 'tag-rewatch',
-};
-const VIBE_TAGS = new Set(['dark', 'absurdist', 'surrealist', 'satirical']);
-const STYLE_TAGS = new Set(['atmospheric']);
+// Tag type/color lookup, keyed by lowercase tag name. Populated at load time
+// from tags.json (the same vocabulary file the bot writes via /newtag) so
+// this page never needs a manual edit when a tag is added or reclassified.
+let tagsData  = null;
+let TAG_LOOKUP = {};
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+async function fetchTags() {
+  if (tagsData) return tagsData;
+  try {
+    const res = await fetch('tags.json', { cache: 'no-store' });
+    tagsData = res.ok ? await res.json() : {};
+  } catch {
+    tagsData = {};
+  }
+  TAG_LOOKUP = {};
+  (tagsData.vibe || []).forEach(t => { TAG_LOOKUP[t.toLowerCase()] = { type: 'vibe' }; });
+  (tagsData.style || []).forEach(t => { TAG_LOOKUP[t.toLowerCase()] = { type: 'style' }; });
+  Object.entries(tagsData.category || {}).forEach(([t, color]) => {
+    TAG_LOOKUP[t.toLowerCase()] = { type: 'category', color };
+  });
+  return tagsData;
+}
 
 function renderTags(tagsStr) {
   if (!tagsStr) return '';
   const badges = tagsStr.split(',').map(t => {
     const label = t.trim();
     if (!label) return '';
-    const key = label.toLowerCase();
-    const cls = CATEGORY_CLASS[key]
-      || (VIBE_TAGS.has(key) && 'tag-vibe')
-      || (STYLE_TAGS.has(key) && 'tag-style')
-      || 'tag-default';
+    const info = TAG_LOOKUP[label.toLowerCase()];
+    if (info && info.type === 'category' && HEX_RE.test(info.color || '')) {
+      const style = `color:${info.color};background:color-mix(in srgb, ${info.color} 18%, #0d1117);`;
+      return `<span class="tag-badge" style="${style}">${esc(label)}</span>`;
+    }
+    const cls = info && (info.type === 'vibe' || info.type === 'style') ? `tag-${info.type}` : 'tag-default';
     return `<span class="tag-badge ${cls}">${esc(label)}</span>`;
   }).join('');
   return badges ? `<div class="col-tags">${badges}</div>` : '';
@@ -694,7 +698,7 @@ async function load() {
       `<div class="loading"><div class="spinner"></div>Loading…</div>`;
   }
   try {
-    const data = await fetchMovies();
+    const [data] = await Promise.all([fetchMovies(), fetchTags()]);
     if (activePage !== 'history') render(data);
   } catch (err) {
     if (activePage !== 'history') {
@@ -938,7 +942,8 @@ function renderHistoryPage() {
 
 async function loadHistory() {
   try {
-    historyCache = await fetchHistory();
+    const [history] = await Promise.all([fetchHistory(), fetchTags()]);
+    historyCache = history;
     rankChanges = historyCache.rankChanges;
     if (activePage === 'history') {
       renderHistoryPage();
