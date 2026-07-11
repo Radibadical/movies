@@ -24,7 +24,40 @@ All secrets live in `.env` (git-ignored). Never commit `.env` or `credentials.js
 | `TELEGRAM_BOT_TOKEN` | From @BotFather |
 | `ALLOWED_USER_ID` | Telegram user ID; bot ignores all other users |
 
-`credentials.json` is a Google service-account key file. Both files are in `.gitignore`.
+`credentials.json` is a Google service-account key file. Both files are in `.gitignore`
+and should be `chmod 600` (owner read/write only) — verified never committed to git
+history (checked via `git log --all --full-history -- .env credentials.json`), but file
+permissions on disk aren't a git concern and can drift back to world-readable after a
+manual edit, e.g. some editors rewrite the file with default 644 permissions on save.
+
+## Security
+
+- **Auth model**: every `CommandHandler` in `main()` is registered with
+  `filters=filters.User(user_id=ALLOWED_USER_ID)`, so only that one Telegram user ID
+  can trigger any command — the bot silently ignores everyone else. If you add a new
+  command handler, it must include this filter too, or it's reachable by anyone who
+  finds the bot on Telegram.
+- **httpx logging is silenced to WARNING** (`logging.getLogger("httpx").setLevel(logging.WARNING)`,
+  set right after `logging.basicConfig`). Without this, httpx (used internally by
+  python-telegram-bot) logs every Telegram API call at INFO level, including the full
+  request URL — `https://api.telegram.org/bot<TOKEN>/getUpdates` — which puts the live
+  bot token in plaintext in `journalctl --user -u movie-list-bot.service`, readable by
+  anyone with journal access. This was caught by directly inspecting the logs during a
+  manual QA session; don't reduce this back to INFO without re-adding a token redaction.
+- **Google Sheets formula injection**: `/tag`, `/note`, `/newtag`, and `/watched`'s note
+  field write raw user text straight into sheet cells with no check for a leading
+  `=`/`+`/`-`/`@`. Deliberately left unguarded — the `ALLOWED_USER_ID` filter means the
+  only person who can trigger this is the sheet owner themselves, so it's a self-inflicted
+  risk at most (an accidental note that Sheets evaluates as a formula on open), not an
+  externally exploitable one.
+- **`tags.json` is public** (served by GitHub Pages at `radibadical.com/movies/tags.json`,
+  fetched directly by `index.html` — see Web UI section). It's always been committed to
+  this public repo; it holds no secrets, only tag names and hex colors, so this isn't new
+  exposure, just now actually read by the page instead of sitting unused.
+- **Public surface recap**: `index.html`, `tags.json`, and the Google Sheet itself
+  (shared "Anyone with the link — Viewer") are intentionally public and read-only.
+  `.env` and `credentials.json` (write access via the service account) are the only
+  things that must never leave this machine.
 
 ## Google Sheet structure
 

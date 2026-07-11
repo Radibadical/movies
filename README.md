@@ -45,7 +45,7 @@ A single-file static page (`index.html`) served via GitHub Pages. Reads directly
 
 **Tabs:** 1–100 · 101–200 · ★ Rated · Recently Watched
 
-Features: full-text search, responsive desktop table + mobile card layout, rank trend arrows, rewatch before/after rank display, deep-linkable URL hashes (`#top100`, `#starred`, etc.).
+Features: full-text search (including tags), responsive desktop table + mobile card layout, rank trend arrows, rewatch before/after rank display, colored tag badges (Vibe/Style/Category, read live from `tags.json` — no rebuild needed when tags change), deep-linkable URL hashes (`#top100`, `#starred`, etc.).
 
 ---
 
@@ -84,6 +84,12 @@ TELEGRAM_BOT_TOKEN=your_token
 ALLOWED_USER_ID=your_telegram_user_id
 ```
 
+Lock both secret files down to owner-only access:
+
+```bash
+chmod 600 .env credentials.json
+```
+
 ### 5. Run the bot
 
 ```bash
@@ -116,5 +122,12 @@ Ranks are either integers (1–200, inside a Sheets Table) or star strings (`★
 
 ## Security
 
-`credentials.json` and `.env` are in `.gitignore` and are never committed.
-The bot ignores all Telegram users except the one configured in `ALLOWED_USER_ID`.
+- `credentials.json` and `.env` are in `.gitignore` and are never committed; keep them
+  `chmod 600` (owner-only) on disk too.
+- The bot ignores all Telegram users except the one configured in `ALLOWED_USER_ID`.
+- The bot's own request logging is deliberately kept quiet (httpx set to WARNING) so
+  the Telegram bot token never ends up in plaintext in your system logs.
+- `index.html`, `tags.json`, and the Google Sheet (shared "Anyone with the link —
+  Viewer") are intentionally public and read-only. `.env` and `credentials.json` are
+  the only things that must stay private — everything else in this repo is meant to
+  be public.

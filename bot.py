@@ -102,6 +102,11 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+# httpx (used internally by python-telegram-bot) logs every request URL at INFO,
+# e.g. "POST https://api.telegram.org/bot<TOKEN>/getUpdates" — which puts the live
+# bot token in plaintext in the systemd journal. Silence it to WARNING so only
+# actual httpx errors surface, never the request URLs.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
