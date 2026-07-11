@@ -203,12 +203,16 @@
       letter-spacing: 0.05em; padding: 0.1rem 0.4rem;
       border-radius: 999px; text-transform: uppercase;
     }
+    .tag-vibe             { background: #0d2137; color: #60a5fa; }
+    .tag-style            { background: #3d1a2a; color: #f472b6; }
     .tag-weird            { background: #2d1a4a; color: #c084fc; }
-    .tag-dudeist          { background: #0d2137; color: #60a5fa; }
+    .tag-dudeist          { background: #2d2410; color: #d4b96a; }
     .tag-christmas        { background: #0d2a18; color: #4ade80; }
-    .tag-guilty-pleasure  { background: #3d1a2a; color: #f472b6; }
+    .tag-guilty-pleasure  { background: #0d2d2a; color: #2dd4bf; }
     .tag-so-bad           { background: #2d1a0d; color: #fb923c; }
     .tag-wtf              { background: #2d0d0d; color: #f87171; }
+    .tag-overrated        { background: #1e293b; color: #94a3b8; }
+    .tag-rewatch          { background: #0d2a2d; color: #22d3ee; }
     .tag-default          { background: #21262d; color: #8b949e; }
     .card-tags      { margin-top: 0.3rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
     .col-year     { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
@@ -393,20 +397,32 @@ let rankChanges  = {};
 let query        = '';
 let activePage = 'top100';
 
-const TAG_CLASS = {
+// Category tags each get their own class/color; Vibe and Style tags share one
+// color per type instead. Keep in sync with tags.json (not fetched by this
+// static page, so the classification is duplicated here by hand).
+const CATEGORY_CLASS = {
   weird: 'tag-weird',
   dudeist: 'tag-dudeist',
   christmas: 'tag-christmas',
   'guilty pleasure': 'tag-guilty-pleasure',
   'so bad it\'s good': 'tag-so-bad',
   wtf: 'tag-wtf',
+  overrated: 'tag-overrated',
+  rewatch: 'tag-rewatch',
 };
+const VIBE_TAGS = new Set(['dark', 'absurdist', 'surrealist', 'satirical']);
+const STYLE_TAGS = new Set([]);
+
 function renderTags(tagsStr) {
   if (!tagsStr) return '';
   const badges = tagsStr.split(',').map(t => {
     const label = t.trim();
     if (!label) return '';
-    const cls = TAG_CLASS[label.toLowerCase()] || 'tag-default';
+    const key = label.toLowerCase();
+    const cls = CATEGORY_CLASS[key]
+      || (VIBE_TAGS.has(key) && 'tag-vibe')
+      || (STYLE_TAGS.has(key) && 'tag-style')
+      || 'tag-default';
     return `<span class="tag-badge ${cls}">${esc(label)}</span>`;
   }).join('');
   return badges ? `<div class="col-tags">${badges}</div>` : '';

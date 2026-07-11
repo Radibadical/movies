@@ -78,7 +78,8 @@ Restart policy: `on-failure` with 10s delay.
 | `/rank <title> | <rank>` | Set rank in Movies; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
 | `/reorder` | Physically re-sort the Movies sheet by Rank; use after manual edits made directly in Google Sheets, which change history_trigger.gs logs but don't move the row |
 | `/tag <title> | <tag>` | Append a tag to a movie's Tags field across all sheets where it appears |
-| `/newtag <tag>` | Add a new tag to the valid tags list (persisted to `tags.json`) |
+| `/untag <title> | <tag>` | Remove a tag from a movie's Tags field across all sheets where it appears (case-insensitive match) |
+| `/newtag <tag> | <vibe\|style\|category> [| <#hexcolor>]` | Register a new tag with a type (persisted to `tags.json`); `category` tags require a hex color, `vibe`/`style` share one color per type |
 | `/note <title> | <note text>` | Add/update Notes field |
 | `/find <query>` | Search every tab and every column in the spreadsheet (not just Title) |
 | `/omdb <title>` | OMDb lookup without touching any sheet |
@@ -89,15 +90,37 @@ Restart policy: `on-failure` with 10s delay.
 | `/trend reset <title>` | Clear the trend indicator for a movie |
 | `/help` | Show help message |
 
-### Tags
+### Tags (Genre/Vibe/Style system)
 
-Valid tags are stored in `tags.json` and loaded at bot startup. The in-memory `VALID_TAGS` list and `VALID_TAGS_LOWER` dict are updated live by `/newtag` without requiring a restart.
+The **Genre** column (from OMDb) covers high-level genre. The **Tags** column covers
+everything else, split into three types:
 
-Current tags: Christmas, Dudeist, Guilty Pleasure, Overrated, So Bad It's Good, WTF, Weird.
+- **Vibe** — how the movie feels (e.g. Dark, Absurdist, Surrealist, Satirical). All
+  Vibe tags render in one shared color (blue).
+- **Style** — how it's made (e.g. Lynchian, atmospheric). All Style tags render in
+  one shared color (pink). Empty until tags are added via `/newtag`.
+- **Category** — everything that doesn't fit Vibe/Style: Christmas, Dudeist, Guilty
+  Pleasure, Overrated, So Bad It's Good, WTF, Weird, Rewatch. Each Category tag has
+  its own individual hex color (unlike Vibe/Style, which share one color per type).
 
-`/addwatch` and `/watched` validate the tag against `VALID_TAGS_LOWER` (case-insensitive) and reject unknown tags with an error listing valid options. `/tag` does not validate — it accepts any string and appends it to the Tags field.
+There is still only **one Tags column** per sheet (comma-separated, same as before) —
+no schema change. The type/color split is a lookup layer on top of the same free-text
+field, not a change to how tags are stored per movie.
 
-Tags in watch list sheets are movie-specific labels (same as main list sheets). There is no separate category concept — the Tags column serves both purposes.
+`tags.json` stores the vocabulary as `{"vibe": [...], "style": [...], "category": {tag:
+hexcolor}}`, loaded into `TAGS` at bot startup. `VALID_TAGS` / `VALID_TAGS_LOWER` are
+flattened views across all three types, rebuilt by `_rebuild_tag_lookup()` whenever
+`/newtag` adds an entry — no restart needed.
+
+`/addwatch` and `/watched` validate the tag against `VALID_TAGS_LOWER` (case-insensitive,
+regardless of type) and reject unknown tags with an error listing valid options. `/tag`
+and `/untag` do not validate — they accept any string; an untyped tag just renders with
+the default grey badge on the web UI instead of a Vibe/Style/Category color.
+
+**`index.html` duplicates the vibe/style/category classification by hand** (`CATEGORY_CLASS`,
+`VIBE_TAGS`, `STYLE_TAGS` in the JS) since the static page never fetches `tags.json` —
+only the Google Sheets CSV export. Adding or reclassifying a tag in `tags.json` requires
+a matching edit in `index.html` for the color to show up on the web UI.
 
 ### `/find` behaviour
 Searches every worksheet in the spreadsheet (including History) via `ss.worksheets()`,

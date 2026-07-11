@@ -25,7 +25,8 @@ A personal movie tracking system built on Google Sheets, with a Telegram bot for
 | `/rank <title> | <rank>` | Set rank (`42`, `4stars`, `4.5stars`) |
 | `/reorder` | Re-sort Movies by Rank after manual edits made directly in Google Sheets |
 | `/tag <title> | <tag>` | Append a tag to a movie's Tags field |
-| `/newtag <tag>` | Add a new valid tag (saved to `tags.json`) |
+| `/untag <title> | <tag>` | Remove a tag from a movie's Tags field |
+| `/newtag <tag> | <vibe\|style\|category> [| <#hexcolor>]` | Register a new tag (saved to `tags.json`); `category` needs a hex color |
 | `/note <title> | <note>` | Add or update the Notes field |
 | `/find <query>` | Search all tabs and all columns |
 | `/omdb <title>` | OMDb lookup without touching any sheet |

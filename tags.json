@@ -1,14 +1,19 @@
-[
-  "Christmas",
-  "Dudeist",
-  "Guilty Pleasure",
-  "So Bad It's Good",
-  "WTF",
-  "Weird",
-  "Overrated",
-  "Rewatch",
-  "Dark",
-  "Absurdist",
-  "Surrealist",
-  "Satirical"
-]
+{
+  "vibe": [
+    "Dark",
+    "Absurdist",
+    "Surrealist",
+    "Satirical"
+  ],
+  "style": [],
+  "category": {
+    "Christmas": "#4ade80",
+    "WTF": "#f87171",
+    "So Bad It's Good": "#fb923c",
+    "Weird": "#c084fc",
+    "Dudeist": "#d4b96a",
+    "Guilty Pleasure": "#2dd4bf",
+    "Overrated": "#94a3b8",
+    "Rewatch": "#22d3ee"
+  }
+}

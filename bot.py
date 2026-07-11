@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import random
+import re
 
 import gspread
 import requests
@@ -104,27 +105,57 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Category aliases for /addwatch
+# Tags (Genre/Vibe/Style tagging system)
 # ---------------------------------------------------------------------------
 
 TAGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tags.json")
 
+DEFAULT_TAGS = {
+    "vibe": [],
+    "style": [],
+    "category": {
+        "Christmas": "#4ade80",
+        "Dudeist": "#d4b96a",
+        "Guilty Pleasure": "#2dd4bf",
+        "So Bad It's Good": "#fb923c",
+        "WTF": "#f87171",
+        "Weird": "#c084fc",
+    },
+}
 
-def _load_tags() -> list[str]:
+
+def _load_tags() -> dict:
+    """Tags are grouped by type: vibe/style (color shared by type — see index.html)
+    and category (each tag carries its own hex color, stored here)."""
     try:
         with open(TAGS_FILE) as f:
-            return json.load(f)
+            data = json.load(f)
+        return {
+            "vibe": list(data.get("vibe", [])),
+            "style": list(data.get("style", [])),
+            "category": dict(data.get("category", {})),
+        }
     except (FileNotFoundError, json.JSONDecodeError):
-        return ["Christmas", "Dudeist", "Guilty Pleasure", "So Bad It's Good", "WTF", "Weird"]
+        return {k: (list(v) if isinstance(v, list) else dict(v)) for k, v in DEFAULT_TAGS.items()}
 
 
-def _save_tags(tags: list[str]) -> None:
+def _save_tags() -> None:
     with open(TAGS_FILE, "w") as f:
-        json.dump(tags, f, indent=2)
+        json.dump(TAGS, f, indent=2)
 
 
-VALID_TAGS: list[str] = _load_tags()
-VALID_TAGS_LOWER: dict[str, str] = {t.lower(): t for t in VALID_TAGS}
+def _rebuild_tag_lookup() -> None:
+    global VALID_TAGS, VALID_TAGS_LOWER
+    VALID_TAGS = TAGS["vibe"] + TAGS["style"] + list(TAGS["category"].keys())
+    VALID_TAGS_LOWER = {t.lower(): t for t in VALID_TAGS}
+
+
+TAGS: dict = _load_tags()
+VALID_TAGS: list[str] = []
+VALID_TAGS_LOWER: dict[str, str] = {}
+_rebuild_tag_lookup()
+
+HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 TV_WATCH_TAB = "TV Watch List"
 
@@ -132,25 +163,29 @@ TV_WATCH_TAB = "TV Watch List"
 # Help text
 # ---------------------------------------------------------------------------
 
-HELP_TEXT = (
-    "<b>Movie List Maintainer</b>\n\n"
-    "/watched <code>&lt;title&gt; [| note [| rank [| tag]]]</code> — Move from Watch List to Movies; adds directly if not on Watch List\n\n"
-    "/tag <code>&lt;title&gt; | &lt;tag&gt;</code> — Add a tag to a movie's Tags field (appends; comma-separated)\n\n"
-    "/newtag <code>&lt;tag&gt;</code> — Add a new tag to the valid tags list\n\n"
-    "/addwatch <code>&lt;title&gt; [| tag]</code> — Add to Watch List; use <code>tv</code> as tag for TV Watch List\n"
-    "  Tags: Weird, Dudeist, Christmas, Guilty Pleasure, So Bad It's Good, WTF\n\n"
-    "/rank <code>&lt;title&gt; | &lt;rank&gt;</code> — Set rank in Movies (<code>42</code>, <code>4stars</code>, <code>4.5stars</code>)\n\n"
-    "/reorder — Re-sort Movies by Rank (use after manual edits in Google Sheets)\n\n"
-    "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes\n\n"
-    "/find <code>&lt;query&gt;</code> — Search all sheets\n\n"
-    "/omdb <code>&lt;title&gt;</code> — Look up OMDb info without modifying any sheet\n\n"
-    "/watchlist <code>[tag]</code> — Show the Watch List\n\n"
-    "/random <code>[genre [| tag]]</code> — Suggest a random Watch List movie\n\n"
-    "/history <code>[n]</code> — Show recent rank changes and watched movies (default 10)\n\n"
-    "/trend list — Show active rank trends\n"
-    "/trend reset <code>&lt;title&gt;</code> — Clear the trend indicator for a movie\n\n"
-    "/help — Show this message"
-)
+def _help_text() -> str:
+    """Built fresh on each call so tag lists reflect live /newtag additions."""
+    return (
+        "<b>Movie List Maintainer</b>\n\n"
+        "/watched <code>&lt;title&gt; [| note [| rank [| tag]]]</code> — Move from Watch List to Movies; adds directly if not on Watch List\n\n"
+        "/tag <code>&lt;title&gt; | &lt;tag&gt;</code> — Add a tag to a movie's Tags field (appends; comma-separated)\n\n"
+        "/untag <code>&lt;title&gt; | &lt;tag&gt;</code> — Remove a tag from a movie's Tags field\n\n"
+        "/newtag <code>&lt;tag&gt; | &lt;vibe|style|category&gt; [| &lt;#hexcolor&gt;]</code> — Register a new tag "
+        "(Category tags need a hex color; Vibe/Style share one color per type)\n\n"
+        "/addwatch <code>&lt;title&gt; [| tag]</code> — Add to Watch List; use <code>tv</code> as tag for TV Watch List\n"
+        f"  Tags: {html(', '.join(VALID_TAGS))}\n\n"
+        "/rank <code>&lt;title&gt; | &lt;rank&gt;</code> — Set rank in Movies (<code>42</code>, <code>4stars</code>, <code>4.5stars</code>)\n\n"
+        "/reorder — Re-sort Movies by Rank (use after manual edits in Google Sheets)\n\n"
+        "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes\n\n"
+        "/find <code>&lt;query&gt;</code> — Search all sheets\n\n"
+        "/omdb <code>&lt;title&gt;</code> — Look up OMDb info without modifying any sheet\n\n"
+        "/watchlist <code>[tag]</code> — Show the Watch List\n\n"
+        "/random <code>[genre [| tag]]</code> — Suggest a random Watch List movie\n\n"
+        "/history <code>[n]</code> — Show recent rank changes and watched movies (default 10)\n\n"
+        "/trend list — Show active rank trends\n"
+        "/trend reset <code>&lt;title&gt;</code> — Clear the trend indicator for a movie\n\n"
+        "/help — Show this message"
+    )
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -505,11 +540,11 @@ def _append_log(ss, event_type: str, title: str, detail: str) -> None:
 # ---------------------------------------------------------------------------
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(HELP_TEXT, parse_mode="HTML")
+    await update.message.reply_text(_help_text(), parse_mode="HTML")
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(HELP_TEXT, parse_mode="HTML")
+    await update.message.reply_text(_help_text(), parse_mode="HTML")
 
 
 async def cmd_omdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1377,10 +1412,21 @@ async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_newtag(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/newtag <tag> — Add a new tag to the valid tags list."""
-    tag = " ".join(context.args).strip()
-    if not tag:
-        await update.message.reply_text("Usage: /newtag <tag>")
+    """/newtag <tag> | <vibe|style|category> [| <#hexcolor>] — Register a new tag."""
+    text = " ".join(context.args).strip()
+    parts = [p.strip() for p in text.split("|")]
+    tag = parts[0] if parts and parts[0] else ""
+    tag_type = parts[1].lower() if len(parts) > 1 else ""
+    color = parts[2] if len(parts) > 2 else ""
+
+    usage = (
+        "Usage: /newtag <tag> | <vibe|style|category> [| <#hexcolor>]\n"
+        "Vibe and Style tags share one color each; Category tags need their own, "
+        "e.g. /newtag Halloween | category | #fb923c"
+    )
+
+    if not tag or tag_type not in ("vibe", "style", "category"):
+        await update.message.reply_text(usage)
         return
 
     if tag.lower() in VALID_TAGS_LOWER:
@@ -1388,12 +1434,20 @@ async def cmd_newtag(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"'{html(canonical)}' is already a valid tag.", parse_mode="HTML")
         return
 
-    VALID_TAGS.append(tag)
-    VALID_TAGS_LOWER[tag.lower()] = tag
-    _save_tags(VALID_TAGS)
+    if tag_type == "category":
+        if not HEX_COLOR_RE.match(color):
+            await update.message.reply_text(usage)
+            return
+        TAGS["category"][tag] = color
+    else:
+        TAGS[tag_type].append(tag)
 
+    _save_tags()
+    _rebuild_tag_lookup()
+
+    color_note = f" ({html(color)})" if tag_type == "category" else ""
     await update.message.reply_text(
-        f"Added tag <b>{html(tag)}</b>. Current tags: {html(', '.join(VALID_TAGS))}",
+        f"Added {tag_type} tag <b>{html(tag)}</b>{color_note}. Current tags: {html(', '.join(VALID_TAGS))}",
         parse_mode="HTML",
     )
 
@@ -1453,6 +1507,61 @@ async def cmd_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_untag(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/untag <title> | <tag> — Remove a tag from a movie's Tags field."""
+    text = " ".join(context.args).strip()
+    if "|" not in text:
+        await update.message.reply_text("Usage: /untag <title> | <tag>")
+        return
+
+    title, _, tag_text = text.partition("|")
+    title = title.strip()
+    tag_text = tag_text.strip()
+
+    if not title or not tag_text:
+        await update.message.reply_text("Usage: /untag <title> | <tag>")
+        return
+
+    try:
+        ss = get_spreadsheet()
+    except Exception as err:
+        await update.message.reply_text(f"Could not connect to sheet: {err}")
+        return
+
+    results = _search_all_sheets(ss, title)
+    if not results:
+        await update.message.reply_text(f"'{html(title)}' not found in any sheet.", parse_mode="HTML")
+        return
+
+    tag_lower = tag_text.lower()
+    updated = []
+    for ws_name, row_num, padded, headers in results:
+        col_index = {h: i for i, h in enumerate(headers)}
+        if "Tags" not in col_index:
+            continue
+        ws = ss.worksheet(ws_name)
+        existing = padded[col_index["Tags"]].strip()
+        existing_tags = [t.strip() for t in existing.split(",") if t.strip()]
+        remaining = [t for t in existing_tags if t.lower() != tag_lower]
+        if len(remaining) == len(existing_tags):
+            updated.append(f"{ws_name} (not tagged)")
+            continue
+        ws.update_cell(row_num, col_index["Tags"] + 1, ", ".join(remaining))
+        updated.append(ws_name)
+
+    if not updated:
+        await update.message.reply_text(
+            f"'{html(title)}' found but no eligible sheets have a Tags column.",
+            parse_mode="HTML",
+        )
+        return
+
+    await update.message.reply_text(
+        f"Removed tag '{html(tag_text)}' from <b>{html(title)}</b> in {html(', '.join(updated))}.",
+        parse_mode="HTML",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -1486,6 +1595,7 @@ def main():
     app.add_handler(CommandHandler("trend",     cmd_trend,     filters=user_filter))
     app.add_handler(CommandHandler("note",      cmd_note,      filters=user_filter))
     app.add_handler(CommandHandler("tag",       cmd_tag,       filters=user_filter))
+    app.add_handler(CommandHandler("untag",     cmd_untag,     filters=user_filter))
     app.add_handler(CommandHandler("newtag",    cmd_newtag,    filters=user_filter))
     app.add_handler(CommandHandler("random",    cmd_random,    filters=user_filter))
 
