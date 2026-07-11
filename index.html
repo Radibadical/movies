@@ -487,6 +487,7 @@ function starLabel(val) {
 function getFiltered(rows, idx, displayCols, notesIdx) {
   const pageFilter = PAGES[activePage];
   const q = query.toLowerCase();
+  const tagsIdx = idx['Tags'];
   return rows.filter(row => {
     const title = row[idx['Title']] || '';
     if (!title.trim()) return false;
@@ -495,8 +496,10 @@ function getFiltered(rows, idx, displayCols, notesIdx) {
     if (!q && !pageFilter(rank)) return false;
     if (!q) return true;
     const note = notesIdx !== undefined ? (row[notesIdx] || '') : '';
+    const tags = tagsIdx !== undefined ? (row[tagsIdx] || '') : '';
     return displayCols.some(c => (row[idx[c]] || '').toLowerCase().includes(q))
-      || note.toLowerCase().includes(q);
+      || note.toLowerCase().includes(q)
+      || tags.toLowerCase().includes(q);
   });
 }
 

@@ -23,6 +23,7 @@ A personal movie tracking system built on Google Sheets, with a Telegram bot for
 | `/addwatch <title> [| tag]` | Add to Watch List; use `tv` as tag for TV Watch List |
 | `/watched <title> [| note [| rank [| tag]]]` | Move from Watch List to Movies; stamps Last Watched |
 | `/rank <title> | <rank>` | Set rank (`42`, `4stars`, `4.5stars`) |
+| `/reorder` | Re-sort Movies by Rank after manual edits made directly in Google Sheets |
 | `/tag <title> | <tag>` | Append a tag to a movie's Tags field |
 | `/newtag <tag>` | Add a new valid tag (saved to `tags.json`) |
 | `/note <title> | <note>` | Add or update the Notes field |

@@ -140,6 +140,7 @@ HELP_TEXT = (
     "/addwatch <code>&lt;title&gt; [| tag]</code> — Add to Watch List; use <code>tv</code> as tag for TV Watch List\n"
     "  Tags: Weird, Dudeist, Christmas, Guilty Pleasure, So Bad It's Good, WTF\n\n"
     "/rank <code>&lt;title&gt; | &lt;rank&gt;</code> — Set rank in Movies (<code>42</code>, <code>4stars</code>, <code>4.5stars</code>)\n\n"
+    "/reorder — Re-sort Movies by Rank (use after manual edits in Google Sheets)\n\n"
     "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes\n\n"
     "/find <code>&lt;query&gt;</code> — Search all sheets\n\n"
     "/omdb <code>&lt;title&gt;</code> — Look up OMDb info without modifying any sheet\n\n"
@@ -290,6 +291,23 @@ def _rank_sort_key_with_title(rank_val: str, title: str) -> tuple:
     return (2, 0.0, "")
 
 
+def _reorder_group_key(rank_val: str, title: str) -> tuple:
+    """Sort key for /reorder: integer ranks, then the blank separator row(s),
+    then star ratings desc + alpha, then anything unrecognised.
+    Unlike _rank_sort_key_with_title, blank ranks sort between the integer and
+    star groups (their normal sheet position) rather than after everything."""
+    s = rank_val.strip()
+    if s.isdigit():
+        return (0, int(s), "")
+    if not s:
+        return (1, 0.0, "")
+    full = s.count("★")
+    half = 0.5 if "✮" in s else 0.0
+    if full or half:
+        return (2, -(full + half), title.strip().lower())
+    return (3, 0.0, "")
+
+
 def _parse_rank_input(s: str) -> tuple[str, str] | None:
     """Parse user-supplied rank input.
 
@@ -376,6 +394,33 @@ def _enforce_200_limit(ss, ws) -> list[str]:
     return bumped
 
 
+def _insert_row_exact(ws, values: list[str], index: int) -> None:
+    """Insert a blank row at `index` (1-based) and write `values` into exactly that
+    row via an explicit range update.
+
+    gspread's insert_row()/insert_rows() insert the blank row correctly but then
+    write data with the Sheets values.append() API, which auto-detects a "table"
+    starting at the given cell and appends after its last row — not necessarily the
+    blank row just inserted. Near a Sheets Table's boundary this can land the data
+    outside the table entirely. Doing the insertDimension and the value write as two
+    separate, exact operations avoids that ambiguity.
+    """
+    ws.spreadsheet.batch_update({
+        "requests": [{
+            "insertDimension": {
+                "range": {
+                    "sheetId": ws.id,
+                    "dimension": "ROWS",
+                    "startIndex": index - 1,
+                    "endIndex": index,
+                },
+                "inheritFromBefore": False,
+            }
+        }]
+    })
+    ws.update([values], f"A{index}")
+
+
 def _reposition_by_rank(ws, row_num: int, new_rank: str, canonical_title: str) -> bool:
     """Set a row's Rank to new_rank and move it to its correct sorted position.
     Reads the current rank from the sheet — callers must NOT pre-write the rank cell.
@@ -434,7 +479,7 @@ def _reposition_by_rank(ws, row_num: int, new_rank: str, canonical_title: str) -
         return False
 
     ws.delete_rows(row_num)
-    ws.insert_row(new_row_data, adjusted)
+    _insert_row_exact(ws, new_row_data, adjusted)
     return True
 
 
@@ -699,7 +744,7 @@ async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_row[col_index["Date Added"]] = datetime.date.today().isoformat()
 
     insert_at = max(2, len(all_values))
-    ws.insert_row(new_row, insert_at)
+    _insert_row_exact(ws, new_row, insert_at)
     tab_label = target_tab + (f" [{tag}]" if tag else "")
     await update.message.reply_text(
         f"Added <b>{html(canonical_title)}</b> ({html(data.get('Year', '?'))}) to {html(tab_label)}.",
@@ -778,6 +823,59 @@ async def cmd_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for bt in bumped:
         msg_lines.append(f"List full (200) — <b>{html(bt)}</b> moved to ★★★★★.")
     await update.message.reply_text("\n".join(msg_lines), parse_mode="HTML")
+
+
+async def cmd_reorder(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/reorder — Physically re-sort the Movies sheet by Rank.
+
+    Manual rank edits made directly in Google Sheets (tracked by
+    history_trigger.gs) don't move the row, unlike /rank. Run this after a batch
+    of manual edits to restore sorted order: integer ranks ascending, then the
+    blank separator row, then star ratings descending + alphabetical."""
+    try:
+        ss = get_spreadsheet()
+        ws = ss.worksheet("Movies")
+    except Exception as err:
+        await update.message.reply_text(f"Could not connect to sheet: {err}")
+        return
+
+    all_values = ws.get_all_values()
+    if len(all_values) < 2:
+        await update.message.reply_text("Movies sheet is empty.")
+        return
+
+    headers = all_values[0]
+    col_index = {h: i for i, h in enumerate(headers)}
+    if "Rank" not in col_index or "Title" not in col_index:
+        await update.message.reply_text("Movies sheet is missing required columns.")
+        return
+
+    rank_col = col_index["Rank"]
+    title_col = col_index["Title"]
+
+    data_rows = [
+        (row + [""] * max(0, len(headers) - len(row)))[:len(headers)]
+        for row in all_values[1:]
+    ]
+
+    sorted_rows = sorted(
+        data_rows,
+        key=lambda r: _reorder_group_key(r[rank_col], r[title_col]),
+    )
+
+    if sorted_rows == data_rows:
+        await update.message.reply_text("Movies sheet is already in order.")
+        return
+
+    start_a1 = gspread.utils.rowcol_to_a1(2, 1)
+    end_a1 = gspread.utils.rowcol_to_a1(len(sorted_rows) + 1, len(headers))
+    ws.update(sorted_rows, f"{start_a1}:{end_a1}")
+    _renumber_ranks(ws)
+    _append_log(ss, "Reordered", "Movies", f"Re-sorted {len(sorted_rows)} rows by rank")
+
+    await update.message.reply_text(
+        f"Re-sorted Movies sheet ({len(sorted_rows)} rows) by rank."
+    )
 
 
 async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -950,7 +1048,7 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             insert_index = i
                             break
 
-                target_ws.insert_row(new_row, insert_index)
+                _insert_row_exact(target_ws, new_row, insert_index)
                 bumped: list[str] = []
                 if rank_value and rank_value.isdigit():
                     _renumber_ranks(target_ws)
@@ -1052,7 +1150,7 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if raw_category == "tv":
         use_tv = True
     elif raw_category:
-        category_filter = CATEGORY_ALIASES.get(raw_category, raw_category.title())
+        category_filter = VALID_TAGS_LOWER.get(raw_category, raw_category)
 
     try:
         ss = get_spreadsheet()
@@ -1382,6 +1480,7 @@ def main():
     app.add_handler(CommandHandler("watchlist", cmd_watchlist, filters=user_filter))
     app.add_handler(CommandHandler("addwatch",  cmd_addwatch,  filters=user_filter))
     app.add_handler(CommandHandler("rank",      cmd_rank,      filters=user_filter))
+    app.add_handler(CommandHandler("reorder",   cmd_reorder,   filters=user_filter))
     app.add_handler(CommandHandler("watched",   cmd_watched,   filters=user_filter))
     app.add_handler(CommandHandler("history",   cmd_history,   filters=user_filter))
     app.add_handler(CommandHandler("trend",     cmd_trend,     filters=user_filter))

@@ -76,6 +76,7 @@ Restart policy: `on-failure` with 10s delay.
 | `/addwatch <title> [| tag]` | Add to Watch List (fetches OMDb data, records Date Added); use `tv` as tag to route to TV Watch List |
 | `/watched <title> [| note [| rank [| tag]]]` | Remove from Watch List and add to Movies sheet; rank accepts same format as /rank; falls back to OMDb if not in watch list; stamps Last Watched |
 | `/rank <title> | <rank>` | Set rank in Movies; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
+| `/reorder` | Physically re-sort the Movies sheet by Rank; use after manual edits made directly in Google Sheets, which change history_trigger.gs logs but don't move the row |
 | `/tag <title> | <tag>` | Append a tag to a movie's Tags field across all sheets where it appears |
 | `/newtag <tag>` | Add a new tag to the valid tags list (persisted to `tags.json`) |
 | `/note <title> | <note text>` | Add/update Notes field |
@@ -107,7 +108,9 @@ each result block.
 ### `/random` behaviour
 Draws only from the "Watch List" tab (not TV Watch List or other sheets). Genre argument
 is a case-insensitive substring match against the Genre column (e.g. `horror` matches
-"Horror, Thriller"). Optional tag filter via pipe: `/random horror | weird`.
+"Horror, Thriller"). Optional tag filter via pipe: `/random horror | weird`. Tag filter
+is canonicalized against `VALID_TAGS_LOWER` (same as `/addwatch`/`/watched`) so casing
+in the command doesn't need to match the sheet exactly.
 
 ### `/watched` syntax
 4-part pipe syntax: `title | note | rank | tag`. Sheet is always Movies — no sheet parameter.
@@ -121,7 +124,8 @@ integer 1–200 are shown.
 ### `/addwatch` table insertion
 Uses `insert_at = max(2, len(all_values))` to insert within the Google Sheets Table
 range rather than one row past the end. Inserting within the table range triggers
-`insertDimension`, which auto-expands the table boundary.
+`insertDimension`, which auto-expands the table boundary. Writes the row via
+`_insert_row_exact` (see below), not gspread's `insert_row()`.
 
 Tag is validated against `VALID_TAGS_LOWER` before the OMDb lookup is made. `tv` is a
 special routing keyword (not a tag) that sends the movie to the TV Watch List tab instead
@@ -182,9 +186,34 @@ Input disambiguation: plain number = numeric rank; `Nstars` or `N.5stars` = star
 - Called by `/rank` and `/watched` for non-watch-list sheets after updating the rank cell.
 - Re-reads all sheet values (capturing the already-updated rank and all other fields).
 - Finds the first row (skipping current) whose sort key ≥ new key; deletes current
-  row and re-inserts at that position (offset adjusted for the deletion).
+  row and re-inserts at that position (offset adjusted for the deletion) via
+  `_insert_row_exact`.
 - Sort key: `(0, int_rank, "")` for integers; `(1, -stars, title_lower)` for star ratings.
 - Returns `False` (no-op) if the row is already in the correct position.
+
+### `_insert_row_exact(ws, values, index)` (bot.py)
+
+Inserts a row at an exact position without gspread's `insert_row()`/`insert_rows()`,
+which write the values via the Sheets `values.append()` API. `values.append()`
+auto-detects a "table" starting at the given cell and appends after its *last* row —
+not necessarily the blank row just inserted — which could land data outside a Google
+Sheets Table object near its boundary (e.g. bumping rank 200). `_insert_row_exact`
+does it in two explicit steps instead: an `insertDimension` request to open a blank
+row (this is what triggers Table auto-expansion) followed by an exact-range
+`values.update()` write into that row. Used by `_reposition_by_rank`, `/addwatch`,
+and the new-movie path of `/watched`.
+
+### `/reorder`
+
+`cmd_reorder` re-sorts the entire Movies sheet in place to fix drift from manual
+edits made directly in Google Sheets (see `history_trigger.gs` — it logs the rank
+change but never moves the row). Reads all rows, sorts them with
+`_reorder_group_key` (integer ranks asc, then the blank separator row(s), then star
+ratings desc + alpha — unlike `_rank_sort_key_with_title`, blanks sort between the
+two groups instead of after everything), and overwrites `A2:<lastCol><lastRow>` with
+the reordered values in a single `ws.update()`. Row count never changes, so this
+never touches the Table's row boundaries. Finishes with `_renumber_ranks` to close
+any gaps/duplicates left by manual edits.
 
 **Star vs. integer insertion direction:** Integer rank moves insert AFTER the target row
 (pushing it to a lower rank). Star rating moves insert BEFORE the target row (to maintain
@@ -288,7 +317,10 @@ Four tabs rendered from a single data fetch:
 The hash is written to the URL on tab switch, so links like `/movies/#starred`
 deep-link to a specific section. All data is fetched once and filtered client-side.
 
-**Search** runs across all sections regardless of which tab is active.
+**Search** runs across all sections regardless of which tab is active. Matches
+against every rendered column (`TABLE_COLS`) plus Notes and Tags — Tags isn't a
+rendered column but is still searchable (`getFiltered` in index.html), so tag
+names like "Weird" surface matching movies even though no Tags column is shown.
 Clearing the search returns to the active tab's filtered view.
 
 **Bottom nav** — each tab renders a nav row at the bottom (`buildBottomNav()`) with
