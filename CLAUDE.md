@@ -106,7 +106,7 @@ Restart policy: `on-failure` with 10s delay.
 
 | Command | Description |
 |---|---|
-| `/addwatch <title> [| tag]` | Add to Watch List (fetches OMDb data, records Date Added); use `tv` as tag to route to TV Watch List |
+| `/addwatch <title> [| note] [| tag]` | Add to Watch List (fetches OMDb data, records Date Added); use `tv` as tag to route to TV Watch List |
 | `/watched <title> [| note [| rank [| tag]]]` | Remove from Watch List and add to Movies sheet; rank accepts same format as /rank; falls back to OMDb if not in watch list; stamps Last Watched |
 | `/rank <title> | <rank>` | Set rank in Movies; plain number = numeric rank, `4stars`/`4.5stars` = star rating; falls back to OMDb and adds the movie fresh if not already in Movies |
 | `/reorder` | Physically re-sort the Movies sheet by Rank; use after manual edits made directly in Google Sheets, which change history_trigger.gs logs but don't move the row |
@@ -204,6 +204,15 @@ range rather than one row past the end. Inserting within the table range trigger
 Tag is validated against `VALID_TAGS_LOWER` before the OMDb lookup is made. `tv` is a
 special routing keyword (not a tag) that sends the movie to the TV Watch List tab instead
 of Watch List; it is detected before tag validation.
+
+**3-part pipe syntax** (`title | note | tag`, added 2026-07-13 — user-requested note
+support): `text.split("|", 2)` → title, note, tag, in that position order — matches
+`/watched`'s and `/note`'s existing "note right after title" convention. **Breaking
+change from the prior 2-part `title | tag` syntax**, chosen deliberately over a
+non-breaking `title | tag | note` ordering for cross-command consistency (user's
+explicit choice). To add a tag with no note: `/addwatch <title> | | <tag>` (empty
+middle segment). Note is written to the "Notes" column same as `_omdb_row`'s other
+fields, only when non-empty.
 
 ## Key implementation details
 

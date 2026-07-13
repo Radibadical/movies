@@ -713,20 +713,24 @@ async def cmd_watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/addwatch <title> [| tag] — Add a movie to the Watch List."""
+    """/addwatch <title> [| note] [| tag] — Add a movie to the Watch List."""
     text = " ".join(context.args).strip()
     if not text:
         await update.message.reply_text(
-            "Usage: /addwatch <title> [| tag]\n"
+            "Usage: /addwatch <title> [| note] [| tag]\n"
+            "Examples: /addwatch Chinatown\n"
+            "          /addwatch Chinatown | recommended by Sam\n"
+            "          /addwatch Chinatown | recommended by Sam | weird\n"
             f"Tags: {', '.join(VALID_TAGS)}\n"
             "Use <code>tv</code> as the tag to add to TV Watch List instead.",
             parse_mode="HTML",
         )
         return
 
-    parts = [p.strip() for p in text.split("|", 1)]
+    parts = [p.strip() for p in text.split("|", 2)]
     title = parts[0].strip()
-    tag_input = parts[1].strip() if len(parts) > 1 else ""
+    note_text = parts[1].strip() if len(parts) > 1 else ""
+    tag_input = parts[2].strip() if len(parts) > 2 else ""
 
     if not title:
         await update.message.reply_text("Please provide a movie title.")
@@ -782,12 +786,15 @@ async def cmd_addwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_row[col_index["Tags"]] = tag
     if "Date Added" in col_index:
         new_row[col_index["Date Added"]] = datetime.date.today().isoformat()
+    if note_text and "Notes" in col_index:
+        new_row[col_index["Notes"]] = note_text
 
     insert_at = max(2, len(all_values))
     _insert_row_exact(ws, new_row, insert_at)
     tab_label = target_tab + (f" [{tag}]" if tag else "")
+    suffix = " (with note)" if note_text else ""
     await update.message.reply_text(
-        f"Added <b>{html(canonical_title)}</b> ({html(data.get('Year', '?'))}) to {html(tab_label)}.",
+        f"Added <b>{html(canonical_title)}</b> ({html(data.get('Year', '?'))}) to {html(tab_label)}{html(suffix)}.",
         parse_mode="HTML",
     )
 
