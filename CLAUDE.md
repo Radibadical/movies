@@ -108,7 +108,7 @@ Restart policy: `on-failure` with 10s delay.
 |---|---|
 | `/addwatch <title> [| tag]` | Add to Watch List (fetches OMDb data, records Date Added); use `tv` as tag to route to TV Watch List |
 | `/watched <title> [| note [| rank [| tag]]]` | Remove from Watch List and add to Movies sheet; rank accepts same format as /rank; falls back to OMDb if not in watch list; stamps Last Watched |
-| `/rank <title> | <rank>` | Set rank in Movies; plain number = numeric rank, `4stars`/`4.5stars` = star rating |
+| `/rank <title> | <rank>` | Set rank in Movies; plain number = numeric rank, `4stars`/`4.5stars` = star rating; falls back to OMDb and adds the movie fresh if not already in Movies |
 | `/reorder` | Physically re-sort the Movies sheet by Rank; use after manual edits made directly in Google Sheets, which change history_trigger.gs logs but don't move the row |
 | `/tag <title> | <tag>` | Append a tag to a movie's Tags field across all sheets where it appears |
 | `/untag <title> | <tag>` | Remove a tag from a movie's Tags field across all sheets where it appears (case-insensitive match) |
@@ -176,6 +176,19 @@ in the command doesn't need to match the sheet exactly.
 ### `/watched` syntax
 4-part pipe syntax: `title | note | rank | tag`. Sheet is always Movies — no sheet parameter.
 Falls back to OMDb lookup if the title is not found in any Watch List. Tag is validated against `VALID_TAGS` and appended to existing Tags on update, or set on insert.
+
+### `/rank` OMDb fallback (fixes #21)
+If the title isn't found in Movies, `cmd_rank` now falls back to `_fetch_omdb_safe`
+and inserts it as a brand-new row instead of just replying "not found" — mirrors
+`/watched`'s new-movie path field-for-field (Title, Year, Director, Country, Genre,
+IMDB Rating, Metascore from OMDb, plus the given Rank), including the same
+sort-position scan (`_rank_sort_key`/`_rank_sort_key_with_title` depending on
+whether the rank is an integer or a star rating) and `_insert_row_exact` call.
+`_renumber_ranks`/`_enforce_200_limit` only run for integer ranks, same guard as
+elsewhere. Logged as `"Rank Changed"` with detail `"Movies: (new) → <rank>"`
+(vs. `"<old> → <new>"` for an existing movie) so History distinguishes the two.
+Tags/Notes are not set by this path — same as `/rank`'s existing behavior for
+already-present movies, since `/rank` never touches those fields.
 
 ### `/history` filtering
 Watch list rank changes (Watch Order updates) are excluded. Only "Rank Changed" events

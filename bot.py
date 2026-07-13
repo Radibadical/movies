@@ -845,12 +845,62 @@ async def cmd_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
             match = (i, padded[col_index["Rank"]].strip(), padded[col_index["Title"]].strip())
             break
 
+    sheet_value, value_display = parsed_value
+
     if not match:
-        await update.message.reply_text(f"'{html(title)}' not found in Movies.", parse_mode="HTML")
+        # Not in Movies yet — look it up on OMDb and add it fresh, same
+        # new-row path /watched uses when a title isn't in any Watch List.
+        await update.message.reply_text(
+            f"'{html(title)}' not in Movies — looking up on OMDb…", parse_mode="HTML"
+        )
+        data = await _fetch_omdb_safe(update, title)
+        if not data:
+            return
+        canonical = data.get("Title", title)
+
+        new_row = [""] * len(headers)
+        field_values = {
+            "Title": canonical,
+            "Year": clean(data.get("Year", "")),
+            "Director": clean(data.get("Director", "")),
+            "Country": clean(data.get("Country", "")),
+            "Genre": clean(data.get("Genre", "")),
+            "IMDB Rating": clean(data.get("imdbRating", "")),
+            "Metascore": clean(data.get("Metascore", "")),
+            "Rank": sheet_value,
+        }
+        for field, value in field_values.items():
+            if field in col_index:
+                new_row[col_index[field]] = value
+
+        # Insert at correct sort position: numbered ranks first, then star
+        # ratings desc + alpha — same scan /watched's new-movie path uses.
+        insert_index = len(all_values) + 1
+        is_int = sheet_value.strip().isdigit()
+        new_key = _rank_sort_key(sheet_value) if is_int else _rank_sort_key_with_title(sheet_value, canonical)
+        for i, row in enumerate(all_values[1:], start=2):
+            padded = row + [""] * max(0, len(headers) - len(row))
+            r = padded[col_index["Rank"]].strip()
+            t = padded[col_index["Title"]].strip()
+            row_key = _rank_sort_key(r) if is_int else _rank_sort_key_with_title(r, t)
+            if r and row_key >= new_key:
+                insert_index = i
+                break
+
+        _insert_row_exact(ws, new_row, insert_index)
+        bumped: list[str] = []
+        if is_int:
+            _renumber_ranks(ws)
+            bumped = _enforce_200_limit(ss, ws)
+        _append_log(ss, "Rank Changed", canonical, f"Movies: (new) → {sheet_value}")
+
+        msg_lines = [f"Added <b>{html(canonical)}</b> to Movies: Rank → {html(sheet_value)}."]
+        for bt in bumped:
+            msg_lines.append(f"List full (200) — <b>{html(bt)}</b> moved to ★★★★★.")
+        await update.message.reply_text("\n".join(msg_lines), parse_mode="HTML")
         return
 
     row_num, old_val, canonical = match
-    sheet_value, value_display = parsed_value
     _reposition_by_rank(ws, row_num, sheet_value, canonical)
     _renumber_ranks(ws)
     bumped: list[str] = []
