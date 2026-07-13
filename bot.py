@@ -12,7 +12,7 @@ import gspread
 import requests
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, filters
 
 load_dotenv()
@@ -1628,6 +1628,33 @@ async def cmd_untag(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Entry point
 # ---------------------------------------------------------------------------
 
+BOT_COMMANDS = [
+    BotCommand("start", "Welcome message + help"),
+    BotCommand("help", "Show all commands"),
+    BotCommand("addwatch", "Add a movie to the Watch List"),
+    BotCommand("watched", "Move a movie to Movies (watched)"),
+    BotCommand("rank", "Set a movie's rank in Movies"),
+    BotCommand("watchlist", "Show the Watch List"),
+    BotCommand("random", "Suggest a random Watch List pick"),
+    BotCommand("find", "Search every sheet and column"),
+    BotCommand("omdb", "OMDb lookup only, no sheet changes"),
+    BotCommand("tag", "Add a tag to a movie"),
+    BotCommand("untag", "Remove a tag from a movie"),
+    BotCommand("newtag", "Register a new tag"),
+    BotCommand("note", "Add/update a movie's note"),
+    BotCommand("history", "Show recent rank changes and watches"),
+    BotCommand("trend", "List or reset rank trends"),
+    BotCommand("reorder", "Re-sort Movies sheet by rank"),
+]
+
+
+async def _post_init(app: Application):
+    # Populate Telegram's "/" menu button — previously unregistered, so the
+    # menu was empty. Same fix applied to the meals bot; keep this list in
+    # sync with the CommandHandlers registered in main() below.
+    await app.bot.set_my_commands(BOT_COMMANDS)
+
+
 def main():
     missing = [
         name for name, val in [
@@ -1642,7 +1669,7 @@ def main():
             print(f"Error: {name} is not set.")
         raise SystemExit(1)
 
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
     user_filter = filters.User(user_id=ALLOWED_USER_ID)
     app.add_handler(CommandHandler("start",     cmd_start,     filters=user_filter))
     app.add_handler(CommandHandler("help",      cmd_help,      filters=user_filter))

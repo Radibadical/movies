@@ -102,6 +102,16 @@ Restart policy: `on-failure` with 10s delay.
 
 **Always restart the bot after editing `bot.py`.**
 
+### Telegram "/" menu button (added 2026-07-13)
+`BOT_COMMANDS` (list of `BotCommand(name, description)`) + `_post_init(app)` +
+`Application.builder().post_init(_post_init)` populate Telegram's native command
+menu (the "/" button in the chat UI) — same pattern used in the meals bot. Previously
+unregistered, so the menu was empty even though every command worked fine when typed
+manually. **Keep `BOT_COMMANDS` in sync with the `CommandHandler` registrations in
+`main()`** — they're verified to match 1:1 as of this writing; a command added to one
+without the other means either a menu entry that does nothing, or a working command
+that doesn't show up in the menu.
+
 ### Bot commands
 
 | Command | Description |
