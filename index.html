@@ -942,7 +942,16 @@ function renderHistoryPage() {
 
 async function loadHistory() {
   try {
-    const [history] = await Promise.all([fetchHistory(), fetchTags()]);
+    // Also wait on fetchMovies() here, not just fetchHistory()/fetchTags() —
+    // buildHistoryContent() reads movie details (Year, Director, Notes, etc.)
+    // from the module-level `cache` populated by fetchMovies(), which load()
+    // fetches independently and concurrently. Without this, whichever fetch
+    // wins the race decides whether Recently Watched renders with movie
+    // details or blank ones — the History sheet is much smaller than Movies,
+    // so it often resolved first, intermittently blanking Notes and every
+    // other joined field. fetchMovies() memoizes via `cache`, so this is a
+    // no-op once load() has already populated it.
+    const [history] = await Promise.all([fetchHistory(), fetchTags(), fetchMovies()]);
     historyCache = history;
     rankChanges = historyCache.rankChanges;
     if (activePage === 'history') {
