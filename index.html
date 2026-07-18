@@ -566,7 +566,7 @@ function buildTable({ cols, rows }) {
               const delta = Math.abs(rc.newN - rc.oldN);
               const cls = rc.newN < rc.oldN ? 'h-arrow-up' : 'h-arrow-down';
               const sym = rc.newN < rc.oldN ? '↑' : '↓';
-              arrowHtml = `<span class="${cls}" title="Click to clear trend" onclick="clearTrend('${rowTitle.replace(/'/g, "\\'")}',${rc.newN},this)">${sym}${delta}</span>`;
+              arrowHtml = `<span class="${cls}" title="Click to clear trend" onclick="clearTrend(${esc(JSON.stringify(rowTitle))},${rc.newN},this)">${sym}${delta}</span>`;
             }
           }
           return `<td class="col-rank">${esc(val)}${arrowHtml ? ' ' + arrowHtml : ''}</td>`;
@@ -632,8 +632,8 @@ function buildCards({ cols, rows }) {
           const delta = Math.abs(rc.newN - rc.oldN);
           const cls = rc.newN < rc.oldN ? 'h-arrow-up' : 'h-arrow-down';
           const sym = rc.newN < rc.oldN ? '↑' : '↓';
-          const tk = title.toLowerCase().replace(/'/g, "\\'");
-          cardArrow = `<span class="${cls}" title="Click to clear trend" onclick="clearTrend('${tk}',${rc.newN},this)">${sym}${delta}</span>`;
+          const tk = title.toLowerCase();
+          cardArrow = `<span class="${cls}" title="Click to clear trend" onclick="clearTrend(${esc(JSON.stringify(tk))},${rc.newN},this)">${sym}${delta}</span>`;
         }
       }
     }
