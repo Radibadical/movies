@@ -68,7 +68,7 @@ One spreadsheet, multiple tabs managed by `WORKSHEET_NAMES` in `bot.py`.
 
 **Rank column — two zones per sheet:**
 - **Numbered ranks (1–200)**: stored inside a Google Sheets Table object. Inserting within this range via `insertDimension` automatically expands the table.
-- **Star ratings**: regular rows below the table, separated by a blank row. Format: `★ ★ ★ ★ ✮` (full stars + optional `✮` half-star, space-separated). Valid values: 5, 4.5, 4, 3.5, 3, 2.5.
+- **Star ratings**: regular rows below the table, separated by a blank row. Format: `★ ★ ★ ★ ✮` (full stars + optional `✮` half-star, space-separated). Valid values: 5, 4.5, 4, 3.5, 3, 2.5, 2.
 - Sort order: numbered ranks ascending first, then star ratings descending, then alphabetical within the same star value.
 - Blank Rank cells (the separator row) are skipped during insertion scans — handled by `if r and _rank_sort_key(r) >= new_key`.
 
@@ -157,8 +157,12 @@ flattened views across all three types, rebuilt by `_rebuild_tag_lookup()` whene
 
 `/addwatch` and `/watched` validate the tag against `VALID_TAGS_LOWER` (case-insensitive,
 regardless of type) and reject unknown tags with an error listing valid options. `/tag`
-and `/untag` do not validate — they accept any string; an untyped tag just renders with
-the default grey badge on the web UI instead of a Vibe/Style/Category color.
+canonicalizes to the registered tag's casing via `VALID_TAGS_LOWER.get(tag.lower(), tag)`
+(fixes #24 — `weird` no longer creates a duplicate of the registered `Weird` tag) but
+still accepts unknown strings as-is; the "already tagged" check on both `/tag` and
+`/untag` compares case-insensitively so a differently-cased duplicate is never appended.
+An untyped/unknown tag just renders with the default grey badge on the web UI instead of
+a Vibe/Style/Category color.
 
 **`index.html` fetches `tags.json` directly** (`fetchTags()`, alongside the Google Sheets
 CSV export) and builds `TAG_LOOKUP` — a lowercase-tag-name → `{type, color}` map — at load
@@ -253,7 +257,7 @@ this way.
 ### Rank helpers (bot.py)
 
 ```python
-VALID_STAR_VALS: frozenset[float] = frozenset({2.5, 3.0, 3.5, 4.0, 4.5, 5.0})
+VALID_STAR_VALS: frozenset[float] = frozenset({2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0})
 
 def _stars_to_str(val: float) -> str:
     # "★ ★ ★ ★ ✮" for 4.5, etc.
@@ -307,6 +311,23 @@ two groups instead of after everything), and overwrites `A2:<lastCol><lastRow>` 
 the reordered values in a single `ws.update()`. Row count never changes, so this
 never touches the Table's row boundaries. Finishes with `_renumber_ranks` to close
 any gaps/duplicates left by manual edits.
+
+The whole body after the initial sheet connection is wrapped in `try`/`except`, replying
+`"Reorder failed: <err>"` on any failure (fixes #23 — previously an exception raised
+after a successful write, e.g. during `_renumber_ranks` or logging, propagated unhandled
+and python-telegram-bot swallowed it, so the sheet was correctly reordered but Telegram
+showed no confirmation at all).
+
+Bulk writes (`ws.update()`, `_renumber_ranks`'s `update_cells()`) never fire
+`history_trigger.gs`'s `onEdit` — that trigger only runs for interactive single-cell
+edits made by a human in the Sheets UI, not for gspread/API writes. So before sorting,
+`cmd_reorder` snapshots each title's rank; after sorting + renumbering, it re-reads the
+sheet and logs a `"Rank Changed"` entry (`"Movies: <old> → <new>"`) for every title whose
+rank actually shifted, matching the same Detail format `/rank`/`/watched` use. Without
+this, only the movie whose rank was manually retyped got a History entry (from
+`onEdit`); every other movie whose rank shifted as a ripple effect of the reorder had no
+History entry at all, so the web UI's trend arrows (driven entirely by `"Rank Changed"`
+entries — see `fetchHistory()`) never showed for them (fixes #22).
 
 **Star vs. integer insertion direction:** Integer rank moves insert AFTER the target row
 (pushing it to a lower rank). Star rating moves insert BEFORE the target row (to maintain

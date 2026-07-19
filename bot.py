@@ -292,11 +292,11 @@ def _send_chunked(lines: list[str], separator: str = "\n") -> list[str]:
 #   - Integers 1–200: numbered positional rank (implicitly all 5-star tier)
 #   - Star strings like "★ ★ ★ ★ ✮": personal rating for sub-200 movies
 #
-# Valid star values: 2.5, 3, 3.5, 4, 4.5, 5
+# Valid star values: 2, 2.5, 3, 3.5, 4, 4.5, 5
 # Star string format: "★" per full star, "✮" for the half, space-separated
 # ---------------------------------------------------------------------------
 
-VALID_STAR_VALS: frozenset[float] = frozenset({2.5, 3.0, 3.5, 4.0, 4.5, 5.0})
+VALID_STAR_VALS: frozenset[float] = frozenset({2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0})
 
 
 def _stars_to_str(val: float) -> str:
@@ -936,43 +936,65 @@ async def cmd_reorder(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Could not connect to sheet: {err}")
         return
 
-    all_values = ws.get_all_values()
-    if len(all_values) < 2:
-        await update.message.reply_text("Movies sheet is empty.")
-        return
+    try:
+        all_values = ws.get_all_values()
+        if len(all_values) < 2:
+            await update.message.reply_text("Movies sheet is empty.")
+            return
 
-    headers = all_values[0]
-    col_index = {h: i for i, h in enumerate(headers)}
-    if "Rank" not in col_index or "Title" not in col_index:
-        await update.message.reply_text("Movies sheet is missing required columns.")
-        return
+        headers = all_values[0]
+        col_index = {h: i for i, h in enumerate(headers)}
+        if "Rank" not in col_index or "Title" not in col_index:
+            await update.message.reply_text("Movies sheet is missing required columns.")
+            return
 
-    rank_col = col_index["Rank"]
-    title_col = col_index["Title"]
+        rank_col = col_index["Rank"]
+        title_col = col_index["Title"]
 
-    data_rows = [
-        (row + [""] * max(0, len(headers) - len(row)))[:len(headers)]
-        for row in all_values[1:]
-    ]
+        data_rows = [
+            (row + [""] * max(0, len(headers) - len(row)))[:len(headers)]
+            for row in all_values[1:]
+        ]
 
-    sorted_rows = sorted(
-        data_rows,
-        key=lambda r: _reorder_group_key(r[rank_col], r[title_col]),
-    )
+        # Capture pre-reorder ranks per title so we can log a "Rank Changed"
+        # entry for anything that shifts as a side effect of the reorder/
+        # renumber below — bulk API writes don't fire history_trigger.gs's
+        # onEdit, so without this, trend arrows never reflect those shifts.
+        old_ranks = {
+            r[title_col].strip(): r[rank_col].strip()
+            for r in data_rows
+            if r[title_col].strip()
+        }
 
-    if sorted_rows == data_rows:
-        await update.message.reply_text("Movies sheet is already in order.")
-        return
+        sorted_rows = sorted(
+            data_rows,
+            key=lambda r: _reorder_group_key(r[rank_col], r[title_col]),
+        )
 
-    start_a1 = gspread.utils.rowcol_to_a1(2, 1)
-    end_a1 = gspread.utils.rowcol_to_a1(len(sorted_rows) + 1, len(headers))
-    ws.update(sorted_rows, f"{start_a1}:{end_a1}")
-    _renumber_ranks(ws)
-    _append_log(ss, "Reordered", "Movies", f"Re-sorted {len(sorted_rows)} rows by rank")
+        if sorted_rows == data_rows:
+            await update.message.reply_text("Movies sheet is already in order.")
+            return
 
-    await update.message.reply_text(
-        f"Re-sorted Movies sheet ({len(sorted_rows)} rows) by rank."
-    )
+        start_a1 = gspread.utils.rowcol_to_a1(2, 1)
+        end_a1 = gspread.utils.rowcol_to_a1(len(sorted_rows) + 1, len(headers))
+        ws.update(sorted_rows, f"{start_a1}:{end_a1}")
+        _renumber_ranks(ws)
+        _append_log(ss, "Reordered", "Movies", f"Re-sorted {len(sorted_rows)} rows by rank")
+
+        final_values = ws.get_all_values()
+        for row in final_values[1:]:
+            padded = (row + [""] * max(0, len(headers) - len(row)))[:len(headers)]
+            title = padded[title_col].strip()
+            new_rank = padded[rank_col].strip()
+            old_rank = old_ranks.get(title)
+            if old_rank is not None and old_rank != new_rank:
+                _append_log(ss, "Rank Changed", title, f"Movies: {old_rank} → {new_rank}")
+
+        await update.message.reply_text(
+            f"Re-sorted Movies sheet ({len(sorted_rows)} rows) by rank."
+        )
+    except Exception as err:
+        await update.message.reply_text(f"Reorder failed: {err}")
 
 
 async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1529,6 +1551,11 @@ async def cmd_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /tag <title> | <tag>")
         return
 
+    # Normalize to the registered tag's casing (e.g. "weird" → "Weird") so the
+    # same tag doesn't end up duplicated under different casing; unknown tags
+    # are kept as typed.
+    tag_text = VALID_TAGS_LOWER.get(tag_text.lower(), tag_text)
+
     try:
         ss = get_spreadsheet()
     except Exception as err:
@@ -1548,7 +1575,7 @@ async def cmd_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws = ss.worksheet(ws_name)
         existing = padded[col_index["Tags"]].strip()
         existing_tags = [t.strip() for t in existing.split(",") if t.strip()]
-        if tag_text in existing_tags:
+        if tag_text.lower() in {t.lower() for t in existing_tags}:
             updated.append(f"{ws_name} (already tagged)")
             continue
         existing_tags.append(tag_text)
