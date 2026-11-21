@@ -472,6 +472,17 @@ back to `.title-text`, which the site header already uses with `flex-shrink: 0` 
 Main-table notes use `.poster-notes` to indent past the poster; the Recently Watched tab
 has no posters and keeps the smaller `.col-notes` indent.
 
+### Spoiler-safe reviews (fixes #27, #30)
+
+The Notes column holds personal reviews, which can contain spoilers, so the site never
+renders note text directly. `reviewBlock(note)` wraps it in a native
+`<details class="review">` ("▸ Show review (may contain spoilers)"), collapsed by default,
+and is used in all four places notes appear: main table (`.col-notes.poster-notes`), phone
+cards and the Recently Watched table and cards (`.card-review`). Any new place that shows a
+note must go through `reviewBlock()`. Collapsed state isn't remembered across re-renders
+(tab switch, search) — that's intentional, so spoilers stay buried. Search still matches
+note text, but only the title row appears; the review stays closed.
+
 ### Recently Watched tab
 
 `buildHistoryContent` builds a `movieLookup` dict keyed by lowercase title from the

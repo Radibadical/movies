@@ -266,6 +266,18 @@
       color: #8b949e; font-style: italic; line-height: 1.55;
       padding-left: 3.5rem;
     }
+    /* Spoiler-safe reviews: collapsed <details>, opened by clicking the summary. */
+    .review > summary {
+      cursor: pointer; font-style: normal; font-size: 0.75rem; color: #58a6ff;
+      list-style: none; padding: 0.25rem 0; width: fit-content;
+    }
+    .review > summary::-webkit-details-marker { display: none; }
+    .review > summary::before { content: '\25B8\00a0'; }
+    .review[open] > summary::before { content: '\25BE\00a0'; }
+    .review > summary:hover { text-decoration: underline; }
+    .review-warn { color: #484f58; }
+    .review[open] .review-warn { display: none; }
+    .review[open] > summary { padding-bottom: 0.375rem; }
     /* Main-table notes line up with the title text, past the 64px poster. */
     .col-notes.poster-notes { padding-left: 5.5rem; }
 
@@ -529,6 +541,12 @@ async function fetchExtra() {
   }
 }
 
+// Reviews can contain spoilers, so they stay collapsed until clicked (#27, #30).
+function reviewBlock(note) {
+  return `<details class="review"><summary>Show review <span class="review-warn">(may contain spoilers)</span></summary>` +
+    `<div class="review-text">${esc(note)}</div></details>`;
+}
+
 function posterUrl(title) {
   const p = (extraData[title.toLowerCase()] || {}).poster || '';
   return /^https:\/\//.test(p) ? p : '';
@@ -715,7 +733,7 @@ function buildTable({ cols, rows }) {
     body += `<tr class="main-row">${tds}</tr>`;
     if (note) {
       body += `<tr class="notes-row"><td></td>` +
-        `<td colspan="${colCount - 1}" class="col-notes poster-notes">${esc(note)}</td></tr>`;
+        `<td colspan="${colCount - 1}" class="col-notes poster-notes">${reviewBlock(note)}</td></tr>`;
     }
   }
 
@@ -776,7 +794,7 @@ function buildCards({ cols, rows }) {
         </div>
         ${imdb ? `<div class="card-imdb">★ ${esc(imdb)}</div>` : ''}
       </div>
-      ${note ? `<div class="card-review">${esc(note)}</div>` : ''}
+      ${note ? `<div class="card-review">${reviewBlock(note)}</div>` : ''}
     </div>`;
   }
   html += '</div>';
@@ -1004,7 +1022,7 @@ function buildHistoryContent({ entries, total, ci, rewatchChanges = {} }) {
     body += `<tr class="main-row">${tds}</tr>`;
     if (note) {
       body += `<tr class="notes-row"><td></td><td></td>` +
-        `<td colspan="${HIST_COLS.length - 2}" class="col-notes">${esc(note)}</td></tr>`;
+        `<td colspan="${HIST_COLS.length - 2}" class="col-notes">${reviewBlock(note)}</td></tr>`;
     }
   }
 
@@ -1049,7 +1067,7 @@ function buildHistoryContent({ entries, total, ci, rewatchChanges = {} }) {
         </div>
         ${imdb ? `<div class="card-imdb">★ ${esc(imdb)}</div>` : ''}
       </div>
-      ${note ? `<div class="card-review">${esc(note)}</div>` : ''}
+      ${note ? `<div class="card-review">${reviewBlock(note)}</div>` : ''}
     </div>`;
   }
   out += '</div>';
