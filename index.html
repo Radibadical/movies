@@ -390,8 +390,8 @@
     }
     .h-badge-watched { background: #1a3a2a; color: #3fb950; }
     .h-badge-ranked  { background: #1a2a3a; color: #58a6ff; }
-    .h-arrow-up   { color: #3fb950; font-weight: 700; cursor: pointer; }
-    .h-arrow-down { color: #f85149; font-weight: 700; cursor: pointer; }
+    .h-arrow-up   { color: #3fb950; font-weight: 700; cursor: help; }
+    .h-arrow-down { color: #f85149; font-weight: 700; cursor: help; }
     .col-rank .h-arrow-up, .col-rank .h-arrow-down,
     .card-rank .h-arrow-up, .card-rank .h-arrow-down { font-size: 0.6rem; }
 
@@ -596,11 +596,10 @@ function renderTags(tagsStr) {
   return badges ? `<div class="col-tags">${badges}</div>` : '';
 }
 
-function clearTrend(titleKey, newN, el) {
-  const trends = JSON.parse(localStorage.getItem('movieTrends') || '{}');
-  trends[titleKey] = newN;
-  localStorage.setItem('movieTrends', JSON.stringify(trends));
-  el.remove();
+// Hover text for a trend arrow. Trends come only from the History sheet, so every
+// visitor sees the same arrows; nothing in the page can hide or clear one.
+function trendTip(rc) {
+  return `Rank #${rc.oldN} → #${rc.newN}` + (rc.changeDate ? ` on ${rc.changeDate}` : '');
 }
 
 // ── CSV parser ───────────────────────────────────────────────────────────────
@@ -730,7 +729,7 @@ function buildTable({ cols, rows }) {
               const delta = Math.abs(rc.newN - rc.oldN);
               const cls = rc.newN < rc.oldN ? 'h-arrow-up' : 'h-arrow-down';
               const sym = rc.newN < rc.oldN ? '↑' : '↓';
-              arrowHtml = `<span class="${cls}" title="Click to clear trend" onclick="clearTrend(${esc(JSON.stringify(rowTitle))},${rc.newN},this)">${sym}${delta}</span>`;
+              arrowHtml = `<span class="${cls}" title="${esc(trendTip(rc))}">${sym}${delta}</span>`;
             }
           }
           return `<td class="col-rank">${esc(val)}${arrowHtml ? ' ' + arrowHtml : ''}</td>`;
@@ -797,8 +796,7 @@ function buildCards({ cols, rows }) {
           const delta = Math.abs(rc.newN - rc.oldN);
           const cls = rc.newN < rc.oldN ? 'h-arrow-up' : 'h-arrow-down';
           const sym = rc.newN < rc.oldN ? '↑' : '↓';
-          const tk = title.toLowerCase();
-          cardArrow = `<span class="${cls}" title="Click to clear trend" onclick="clearTrend(${esc(JSON.stringify(tk))},${rc.newN},this)">${sym}${delta}</span>`;
+          cardArrow = `<span class="${cls}" title="${esc(trendTip(rc))}">${sym}${delta}</span>`;
         }
       }
     }
@@ -906,7 +904,6 @@ async function fetchHistory() {
   // Process history in row order so a Rank Changed that follows a Trend Reset shows an arrow.
   const cutoff = new Date();
   cutoff.setFullYear(cutoff.getFullYear() - 1);
-  const trends = JSON.parse(localStorage.getItem('movieTrends') || '{}');
   const changes = {};
 
   // Rewatch rank tracking: detect Watched events that have a same-date Rank Changed entry.
@@ -958,7 +955,6 @@ async function fetchHistory() {
       const oldStr = before.split(/[\s:]+/).pop();
       const oldN = parseInt(oldStr, 10);
       if (!Number.isFinite(oldN) || oldN === newN) continue;
-      if (trends[titleKey] === newN) continue;
       changes[titleKey] = { oldN, newN, changeDate: rowDateStr };
       continue;
     }
