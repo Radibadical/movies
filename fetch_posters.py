@@ -81,7 +81,11 @@ def main() -> int:
                     params={"apikey": api_key, "i": hit["imdbID"]},
                     timeout=10,
                 ).json()
-            if data.get("Response") == "True" or "limit" in data.get("Error", "").lower():
+            if "limit" in data.get("Error", "").lower():
+                break
+            # A match without a poster is often the wrong record (e.g. a bad
+            # sheet year hitting a different film), so keep trying.
+            if data.get("Response") == "True" and data.get("Poster", "N/A") != "N/A":
                 break
         if data.get("Response") != "True":
             error = data.get("Error", "")
