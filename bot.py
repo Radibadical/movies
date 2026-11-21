@@ -181,7 +181,8 @@ def _help_text() -> str:
         f"  Tags: {html(', '.join(VALID_TAGS))}\n\n"
         "/rank <code>&lt;title&gt; | &lt;rank&gt;</code> — Set rank in Movies (<code>42</code>, <code>4stars</code>, <code>4.5stars</code>)\n\n"
         "/reorder — Re-sort Movies by Rank (use after manual edits in Google Sheets)\n\n"
-        "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes\n\n"
+        "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes (the old note is saved)\n\n"
+        "/notehistory <code>&lt;title&gt;</code> — Show a movie's current note and earlier versions\n\n"
         "/find <code>&lt;query&gt;</code> — Search all sheets\n\n"
         "/omdb <code>&lt;title&gt;</code> — Look up OMDb info without modifying any sheet\n\n"
         "/watchlist <code>[tag]</code> — Show the Watch List\n\n"
@@ -523,8 +524,9 @@ def _reposition_by_rank(ws, row_num: int, new_rank: str, canonical_title: str) -
     return True
 
 
-def _append_log(ss, event_type: str, title: str, detail: str) -> None:
-    """Append an entry to the History tab. Silently swallows errors."""
+def _append_log(ss, event_type: str, title: str, detail: str, strict: bool = False) -> None:
+    """Append an entry to the History tab. Swallows errors unless strict=True,
+    which re-raises so callers that must not lose data (see _save_old_note) can stop."""
     try:
         try:
             log_ws = ss.worksheet(LOG_TAB)
@@ -537,7 +539,25 @@ def _append_log(ss, event_type: str, title: str, detail: str) -> None:
             len(all_values) + 1,
         )
     except Exception:
-        pass
+        if strict:
+            raise
+
+
+NOTE_REPLACED = "Note Replaced"
+
+
+def _save_old_note(ss, sheet_name: str, title: str, old_note: str, new_note: str) -> bool:
+    """Preserve a review that is about to be overwritten (fixes #28).
+
+    Logs the old text to History as "Note Replaced" (Detail = "<sheet>: <old note>").
+    Does nothing, returning False, if there was no old note or it is unchanged.
+    Raises if the History write fails, so the caller can abort instead of
+    overwriting a review that was never saved."""
+    old_note = old_note.strip()
+    if not old_note or old_note == new_note.strip():
+        return False
+    _append_log(ss, NOTE_REPLACED, title, f"{sheet_name}: {old_note}", strict=True)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1110,12 +1130,20 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if existing_row_num is not None:
                 existing_padded = (all_values[existing_row_num - 1] + [""] * max(0, len(headers) - len(all_values[existing_row_num - 1])))
                 updates = []
+                # Save the review being replaced before any write, so a failed save
+                # leaves the sheet untouched (fixes #28).
+                note_saved = False
+                if note_text and "Notes" in col_index:
+                    note_saved = _save_old_note(
+                        ss, target_sheet, canonical_title,
+                        existing_padded[col_index["Notes"]], note_text,
+                    )
                 if "Last Watched" in col_index:
                     target_ws.update_cell(existing_row_num, col_index["Last Watched"] + 1, datetime.date.today().isoformat())
                     updates.append("Last Watched updated")
                 if note_text and "Notes" in col_index:
                     target_ws.update_cell(existing_row_num, col_index["Notes"] + 1, note_text)
-                    updates.append("note updated")
+                    updates.append("note updated, previous saved" if note_saved else "note updated")
                 if tag_text and "Tags" in col_index:
                     existing_tags_val = existing_padded[col_index["Tags"]].strip() if col_index["Tags"] < len(existing_padded) else ""
                     existing_tags = [t.strip() for t in existing_tags_val.split(",") if t.strip()]
@@ -1224,6 +1252,8 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     def _visible(row: list[str]) -> bool:
         padded = row + [""] * max(0, len(headers) - len(row))
         etype = padded[col_index["Type"]] if "Type" in col_index else ""
+        if etype == NOTE_REPLACED:
+            return False  # whole old reviews; read them with /notehistory instead
         if etype != "Rank Changed":
             return True
         detail = padded[col_index["Detail"]] if "Detail" in col_index else ""
@@ -1477,10 +1507,22 @@ async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     updated = []
+    saved_old = False
+    saved_texts: set[str] = set()  # same old review on several tabs is saved once
     for ws_name, row_num, padded, headers in results:
         col_index = {h: i for i, h in enumerate(headers)}
         if "Notes" not in col_index:
             continue
+        old_note = padded[col_index["Notes"]].strip()
+        if old_note and old_note not in saved_texts:
+            try:
+                saved_old = _save_old_note(ss, ws_name, title, old_note, note_text) or saved_old
+            except Exception as err:
+                await update.message.reply_text(
+                    f"Could not save the previous note to History, so nothing was overwritten: {err}"
+                )
+                return
+            saved_texts.add(old_note)
         ws = ss.worksheet(ws_name)
         ws.update_cell(row_num, col_index["Notes"] + 1, note_text)
         updated.append(ws_name)
@@ -1489,10 +1531,67 @@ async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"'{title}' was found but no sheets have a Notes column.")
         return
 
+    suffix = f"\nPrevious note saved — see /notehistory {html(title)}" if saved_old else ""
     await update.message.reply_text(
-        f"Updated notes for <b>{html(title)}</b> in {html(', '.join(updated))}.",
+        f"Updated notes for <b>{html(title)}</b> in {html(', '.join(updated))}.{suffix}",
         parse_mode="HTML",
     )
+
+
+async def cmd_notehistory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/notehistory <title> — Show a movie's current note and every note it replaced."""
+    title = " ".join(context.args).strip()
+    if not title:
+        await update.message.reply_text("Usage: /notehistory <title>")
+        return
+
+    try:
+        ss = get_spreadsheet()
+    except Exception as err:
+        await update.message.reply_text(f"Could not connect to sheet: {err}")
+        return
+
+    title_lower = title.lower()
+    try:
+        all_values = ss.worksheet(LOG_TAB).get_all_values()
+    except gspread.WorksheetNotFound:
+        all_values = []
+    except Exception as err:
+        await update.message.reply_text(f"Could not read History: {err}")
+        return
+
+    old_notes = []  # (date, detail), oldest first
+    if len(all_values) > 1:
+        ci = {h: i for i, h in enumerate(all_values[0])}
+        for row in all_values[1:]:
+            padded = row + [""] * max(0, len(all_values[0]) - len(row))
+            if (padded[ci.get("Type", 1)] == NOTE_REPLACED
+                    and padded[ci.get("Title", 2)].strip().lower() == title_lower):
+                old_notes.append((padded[ci.get("Date", 0)], padded[ci.get("Detail", 3)]))
+
+    current = ""
+    for _ws_name, _row, padded, headers in _search_all_sheets(ss, title)[:1]:
+        if "Notes" in headers:
+            current = padded[headers.index("Notes")].strip()
+
+    if not old_notes and not current:
+        await update.message.reply_text(f"No notes found for '{title}'.")
+        return
+
+    lines = [f"<b>Notes for {html(title)}</b>\n"]
+    lines.append(f"<b>Current:</b> {html(current) if current else '(none)'}")
+    for date, detail in reversed(old_notes):  # newest replaced note first
+        sheet, sep, text = detail.partition(": ")
+        lines.append(f"\n<b>Replaced {html(date)}</b> ({html(sheet)}):\n{html(text if sep else detail)}")
+    if not old_notes:
+        lines.append("\nNo earlier versions saved.")
+
+    msg = "\n".join(lines)
+    if len(msg) <= 4000:
+        await update.message.reply_text(msg, parse_mode="HTML")
+    else:
+        for chunk in _send_chunked(lines, "\n"):
+            await update.message.reply_text(chunk, parse_mode="HTML")
 
 
 async def cmd_newtag(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1669,6 +1768,7 @@ BOT_COMMANDS = [
     BotCommand("untag", "Remove a tag from a movie"),
     BotCommand("newtag", "Register a new tag"),
     BotCommand("note", "Add/update a movie's note"),
+    BotCommand("notehistory", "Show a movie's note and earlier versions"),
     BotCommand("history", "Show recent rank changes and watches"),
     BotCommand("trend", "List or reset rank trends"),
     BotCommand("reorder", "Re-sort Movies sheet by rank"),
@@ -1710,6 +1810,7 @@ def main():
     app.add_handler(CommandHandler("history",   cmd_history,   filters=user_filter))
     app.add_handler(CommandHandler("trend",     cmd_trend,     filters=user_filter))
     app.add_handler(CommandHandler("note",      cmd_note,      filters=user_filter))
+    app.add_handler(CommandHandler("notehistory", cmd_notehistory, filters=user_filter))
     app.add_handler(CommandHandler("tag",       cmd_tag,       filters=user_filter))
     app.add_handler(CommandHandler("untag",     cmd_untag,     filters=user_filter))
     app.add_handler(CommandHandler("newtag",    cmd_newtag,    filters=user_filter))

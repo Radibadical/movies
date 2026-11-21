@@ -27,7 +27,8 @@ A personal movie tracking system built on Google Sheets, with a Telegram bot for
 | `/tag <title> | <tag>` | Append a tag to a movie's Tags field |
 | `/untag <title> | <tag>` | Remove a tag from a movie's Tags field |
 | `/newtag <tag> | <vibe\|style\|category> [| <#hexcolor>]` | Register a new tag (saved to `tags.json`); `category` needs a hex color |
-| `/note <title> | <note>` | Add or update the Notes field |
+| `/note <title> | <note>` | Add or update the Notes field; the previous note is saved to History |
+| `/notehistory <title>` | Show a movie's current note and every earlier version |
 | `/find <query>` | Search all tabs and all columns |
 | `/omdb <title>` | OMDb lookup without touching any sheet |
 | `/watchlist [tag]` | Show the Watch List, optionally filtered by tag |
