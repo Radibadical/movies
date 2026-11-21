@@ -278,6 +278,16 @@
     .review-warn { color: #484f58; }
     .review[open] .review-warn { display: none; }
     .review[open] > summary { padding-bottom: 0.375rem; }
+    /* Earlier versions of the review, shown under the current one. */
+    .review-prev {
+      margin-top: 0.75rem; padding-left: 0.75rem; border-left: 2px solid #30363d;
+    }
+    .review-prev-head {
+      font-style: normal; font-size: 0.65rem; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: #6e7681;
+    }
+    .review-prev-item { margin-top: 0.625rem; color: #7d8590; }
+    .review-prev-date { font-style: normal; font-size: 0.7rem; color: #484f58; margin-bottom: 0.125rem; }
     /* Main-table notes line up with the title text, past the 64px poster. */
     .col-notes.poster-notes { padding-left: 5.5rem; }
 
@@ -449,6 +459,7 @@ const PAGES = {
 let cache        = null;
 let historyCache = null;
 let rankChanges  = {};
+let noteVersions = {};  // lowercase title -> [{date, text}], newest replaced first
 let query        = '';
 let activePage = 'top100';
 
@@ -542,9 +553,19 @@ async function fetchExtra() {
 }
 
 // Reviews can contain spoilers, so they stay collapsed until clicked (#27, #30).
-function reviewBlock(note) {
-  return `<details class="review"><summary>Show review <span class="review-warn">(may contain spoilers)</span></summary>` +
-    `<div class="review-text">${esc(note)}</div></details>`;
+// Earlier versions of the review (saved by the bot / Apps Script as "Note Replaced"
+// History rows) are shown under the current one, newest replaced first (#28).
+function reviewBlock(note, title) {
+  // Skip a saved version identical to the current review (e.g. an edit that was undone).
+  const old = (noteVersions[(title || '').toLowerCase()] || []).filter(v => v.text !== note.trim());
+  const count = old.length ? ` · ${old.length} earlier version${old.length > 1 ? 's' : ''}` : '';
+  const prev = old.length
+    ? `<div class="review-prev"><div class="review-prev-head">Previous versions</div>` +
+      old.map(v => `<div class="review-prev-item"><div class="review-prev-date">Replaced ${esc(v.date)}</div>${esc(v.text)}</div>`).join('') +
+      `</div>`
+    : '';
+  return `<details class="review"><summary>Show review <span class="review-warn">(may contain spoilers${count})</span></summary>` +
+    `<div class="review-text">${esc(note)}</div>${prev}</details>`;
 }
 
 function posterUrl(title) {
@@ -733,7 +754,7 @@ function buildTable({ cols, rows }) {
     body += `<tr class="main-row">${tds}</tr>`;
     if (note) {
       body += `<tr class="notes-row"><td></td>` +
-        `<td colspan="${colCount - 1}" class="col-notes poster-notes">${reviewBlock(note)}</td></tr>`;
+        `<td colspan="${colCount - 1}" class="col-notes poster-notes">${reviewBlock(note, row[idx['Title']])}</td></tr>`;
     }
   }
 
@@ -794,7 +815,7 @@ function buildCards({ cols, rows }) {
         </div>
         ${imdb ? `<div class="card-imdb">★ ${esc(imdb)}</div>` : ''}
       </div>
-      ${note ? `<div class="card-review">${reviewBlock(note)}</div>` : ''}
+      ${note ? `<div class="card-review">${reviewBlock(note, title)}</div>` : ''}
     </div>`;
   }
   html += '</div>';
@@ -871,7 +892,7 @@ async function fetchHistory() {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const parsed = parseCSV(await res.text());
-  if (parsed.length < 2) return { entries: [], total: 0, ci: {}, rankChanges: {} };
+  if (parsed.length < 2) return { entries: [], total: 0, ci: {}, rankChanges: {}, noteVersions: {} };
   const cols = parsed[0].map(c => c.trim());
   const ci = {};
   cols.forEach((c, i) => { if (c) ci[c] = i; });
@@ -892,11 +913,20 @@ async function fetchHistory() {
   const rewatchChanges = {}; // "titleKey|date" → {oldRank, newRank}
   const pendingRankChange = {}; // titleKey → {oldRank, newRank, date}
 
+  const versions = {}; // "Note Replaced" rows: Detail is "<sheet>: <old review>"
   for (const row of allRows) {
     const type = row[ci['Type']] || '';
     const titleKey = (row[ci['Title']] || '').toLowerCase();
     const rowDateStr = row[ci['Date']] || '';
     const detail = row[ci['Detail']] || '';
+
+    if (type === 'Note Replaced') {
+      const sep = detail.indexOf(': ');
+      const text = (sep === -1 ? detail : detail.slice(sep + 2)).trim();
+      const list = versions[titleKey] = versions[titleKey] || [];
+      if (text && !list.some(v => v.text === text)) list.push({ date: rowDateStr, text });
+      continue;
+    }
 
     if (type === 'Trend Reset') {
       delete changes[titleKey];
@@ -941,7 +971,9 @@ async function fetchHistory() {
     }
   }
 
-  return { entries, total: watchedRows.length, ci, rankChanges: changes, rewatchChanges };
+  // Newest replaced first: rows are oldest-first, so reverse, then (stable) sort by date.
+  for (const k in versions) versions[k].reverse().sort((a, b) => b.date.localeCompare(a.date));
+  return { entries, total: watchedRows.length, ci, rankChanges: changes, rewatchChanges, noteVersions: versions };
 }
 
 function buildHistoryContent({ entries, total, ci, rewatchChanges = {} }) {
@@ -1022,7 +1054,7 @@ function buildHistoryContent({ entries, total, ci, rewatchChanges = {} }) {
     body += `<tr class="main-row">${tds}</tr>`;
     if (note) {
       body += `<tr class="notes-row"><td></td><td></td>` +
-        `<td colspan="${HIST_COLS.length - 2}" class="col-notes">${reviewBlock(note)}</td></tr>`;
+        `<td colspan="${HIST_COLS.length - 2}" class="col-notes">${reviewBlock(note, row[ci['Title']])}</td></tr>`;
     }
   }
 
@@ -1067,7 +1099,7 @@ function buildHistoryContent({ entries, total, ci, rewatchChanges = {} }) {
         </div>
         ${imdb ? `<div class="card-imdb">★ ${esc(imdb)}</div>` : ''}
       </div>
-      ${note ? `<div class="card-review">${reviewBlock(note)}</div>` : ''}
+      ${note ? `<div class="card-review">${reviewBlock(note, row[ci['Title']])}</div>` : ''}
     </div>`;
   }
   out += '</div>';
@@ -1099,6 +1131,7 @@ async function loadHistory() {
     const [history] = await Promise.all([fetchHistory(), fetchTags(), fetchMovies()]);
     historyCache = history;
     rankChanges = historyCache.rankChanges;
+    noteVersions = historyCache.noteVersions || {};
     if (activePage === 'history') {
       renderHistoryPage();
     } else if (cache) {

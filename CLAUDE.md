@@ -498,6 +498,18 @@ note must go through `reviewBlock()`. Collapsed state isn't remembered across re
 (tab switch, search) — that's intentional, so spoilers stay buried. Search still matches
 note text, but only the title row appears; the review stays closed.
 
+**Earlier versions on the site:** `fetchHistory()` also collects the History tab's
+`Note Replaced` rows into `noteVersions` (lowercase title → `[{date, text}]`, newest first;
+Detail is `<sheet>: <old review>`, so the text after the first `": "` is used; identical
+texts are collapsed). `reviewBlock(note, title)` shows them under the current review as
+"Previous versions" and adds "· N earlier versions" to the summary. A saved version equal to
+the current review (e.g. an edit that was undone) is hidden. They arrive with the History
+fetch, so the list re-renders once it loads. The title passed in must be the row's own
+title: `row[idx['Title']]` in `buildTable`, `title` in `buildCards`, and
+`row[ci['Title']]` on the Recently Watched tab (a wrong variable here throws and blanks the
+whole list). A review that was cleared entirely shows nothing, since the call sites only
+render when a current note exists.
+
 ### Recently Watched tab
 
 `buildHistoryContent` builds a `movieLookup` dict keyed by lowercase title from the
