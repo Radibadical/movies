@@ -79,6 +79,9 @@ One spreadsheet, multiple tabs managed by `WORKSHEET_NAMES` in `bot.py`.
 **TV watch list** (same columns as Watch List, no Tags routing):
 - TV Watch List
 
+**Weekend Queue tab** (columns: Order, Title, Year, Director, Genre, Date Added) — auto-created
+by the first `/queue <title>`; not in WORKSHEET_NAMES. See "Weekend Queue" below.
+
 **History log tab** (columns: Date, Type, Title, Detail):
 - History — auto-created on first event; not in WORKSHEET_NAMES
 - Type values: "Rank Changed" (from `/rank`, `/watched`, or the Apps Script trigger), "Watched" (from `/watched`), "Trend Reset" (from `/trend reset`), "Note Replaced" (the old review text, from `/note`, `/watched` or the Apps Script trigger; Detail = `<sheet>: <old note>`)
@@ -125,6 +128,8 @@ that doesn't show up in the menu.
 | `/newtag <tag> | <vibe\|style\|category> [| <#hexcolor>]` | Register a new tag with a type (persisted to `tags.json`); `category` tags require a hex color, `vibe`/`style` share one color per type |
 | `/note <title> | <note text>` | Add/update Notes field; the previous note is saved to History first |
 | `/notehistory <title>` | Show a movie's current note and every earlier version (newest replaced first) |
+| `/queue [title [| position] | clear]` | Weekend Queue: no args lists it; a title adds it (or moves it to `position` if already queued); `clear` empties it |
+| `/unqueue <title>` | Remove a movie from the Weekend Queue |
 | `/find <query>` | Search every tab and every column in the spreadsheet (not just Title) |
 | `/omdb <title>` | OMDb lookup without touching any sheet |
 | `/watchlist [tag]` | Show Watch List, optionally filtered by tag |
@@ -204,6 +209,28 @@ elsewhere. Logged as `"Rank Changed"` with detail `"Movies: (new) → <rank>"`
 (vs. `"<old> → <new>"` for an existing movie) so History distinguishes the two.
 Tags/Notes are not set by this path — same as `/rank`'s existing behavior for
 already-present movies, since `/rank` never touches those fields.
+
+### Weekend Queue (fixes #29)
+A small ordered tab for lining movies up for the weekend, kept separate from Watch List's
+`Watch Order` (which the user said they don't really use). Columns: `QUEUE_COLUMNS` =
+Order, Title, Year, Director, Genre, Date Added. It is a plain tab (not a Sheets Table), so
+the whole queue is simply rewritten on every change: `_write_queue(ws, rows)` renumbers
+Order 1..n, `batch_clear`s the old range and `update`s from A2 — no `insertDimension` needed.
+`_get_queue_ws(ss, create)` lazily creates the tab like History; read-only paths (`/queue`
+with no args, `/unqueue`, `/queue clear`, the `/watched` hook) pass `create=False` so they
+never create an empty tab.
+
+- `/queue <title>` adds to the end. Details come from the Watch List row if there is one,
+  else any other tab, else OMDb (`_fetch_omdb_safe`, which replies with its own error).
+  Titles match case-insensitively, and again after canonicalizing, so a variant spelling
+  can't be queued twice.
+- `/queue <title> | <n>` inserts at position n (clamped to the end). On an already-queued
+  title it **moves** it instead — that is the way to prioritize. Without a position, an
+  already-queued title just reports its current spot.
+- `/queue clear` is reserved; a movie literally titled "clear" can't be queued by that name.
+- `/watched` removes the movie from the queue on success (`_remove_from_queue`, errors
+  swallowed so it can never break `/watched`) and says so in its reply.
+- The web UI doesn't show the queue.
 
 ### Previous reviews are kept (fixes #28)
 `/note` and a rewatch via `/watched` used to overwrite the Notes cell, losing the old review.
