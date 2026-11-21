@@ -29,6 +29,7 @@ A personal movie tracking system built on Google Sheets, with a Telegram bot for
 | `/newtag <tag> | <vibe\|style\|category> [| <#hexcolor>]` | Register a new tag (saved to `tags.json`); `category` needs a hex color |
 | `/note <title> | <note>` | Add or update the Notes field; the previous note is saved to History |
 | `/notehistory <title>` | Show a movie's current note and every earlier version |
+| `/rankhistory <title>` | Show every rank a movie has had over time, newest first |
 | `/queue [title [| position] | clear]` | Weekend Queue: no args lists it; a title adds it (or moves it if already queued); `| 1` puts it first; `clear` empties it |
 | `/unqueue <title>` | Remove a movie from the Weekend Queue |
 | `/find <query>` | Search all tabs and all columns |

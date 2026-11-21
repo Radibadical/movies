@@ -128,6 +128,7 @@ that doesn't show up in the menu.
 | `/newtag <tag> | <vibe\|style\|category> [| <#hexcolor>]` | Register a new tag with a type (persisted to `tags.json`); `category` tags require a hex color, `vibe`/`style` share one color per type |
 | `/note <title> | <note text>` | Add/update Notes field; the previous note is saved to History first |
 | `/notehistory <title>` | Show a movie's current note and every earlier version (newest replaced first) |
+| `/rankhistory <title>` | Show a movie's current rank and every rank change from History, newest first |
 | `/queue [title [| position] | clear]` | Weekend Queue: no args lists it; a title adds it (or moves it to `position` if already queued); `clear` empties it |
 | `/unqueue <title>` | Remove a movie from the Weekend Queue |
 | `/find <query>` | Search every tab and every column in the spreadsheet (not just Title) |
@@ -566,6 +567,30 @@ event exists in the History tab within the last **year** (previously 30 days).
   for everyone on next page load. Rank history itself is never deleted — a reset only
   stops the arrow until the next rank change.
 - `/trend list` in the bot also uses a 1-year window.
+
+### Rank history (every rank over time)
+The arrow only shows the latest change within a year. For the full story, both the site and
+the bot list **every** `Rank Changed` History row for the **Movies** tab (`Detail` starts
+with `Movies:`), however old, including star ratings and new/unranked transitions:
+- **Site:** `fetchHistory()` collects them into `rankHistory` (lowercase title →
+  `[{date, from, to}]`, newest first); `rankHistoryBlock(title)` renders a collapsed
+  "Rank history (N changes)" `<details>` next to the review toggle, in the main table's
+  sub-row and on phone cards. It appears for any movie with at least one change, whether or
+  not it has a review (the sub-row/card section is built from the review block plus this one).
+  `fmtRank` shows `#12`, `new`, `unranked`, or the star string. The Recently Watched tab
+  doesn't show it.
+- **Bot:** `/rankhistory <title>` does the same from the History sheet via
+  `_parse_rank_change(detail)` (keep it in step with the JS parsing in `fetchHistory()`),
+  plus the current rank from the Movies tab.
+- **Same-day churn is collapsed**: consecutive entries on the same date become one line
+  (first `from` → last `to`, with "· N moves"), and a day that ended where it started is
+  dropped. Real data had many same-day `#2 → #1` / `#1 → #2` flips (from `/reorder` and
+  setup-day shuffling) that buried the real story. Done in `fetchHistory()` (JS) and
+  `_collapse_rank_changes()` (bot); keep them in step. The History sheet itself is untouched.
+- Entries are skipped when from == to, for non-Movies sheets (Watch List order changes) and
+  for rows with no `→`. `/reorder` logs a `Rank Changed` for every title it shifts, so
+  those ripples appear in the history too. `Trend Reset` does not hide any of this; it only
+  stops the arrow.
 
 ### CSS style values (index.html)
 
