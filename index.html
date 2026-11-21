@@ -197,6 +197,16 @@
       color: #d4a017;
     }
     .col-title    { font-weight: 500; color: #e6edf3; font-size: 1.125rem; }
+    .title-wrap   { display: flex; align-items: flex-start; gap: 0.75rem; }
+    .title-text   { min-width: 0; }
+    .poster {
+      width: 40px; height: 60px; object-fit: cover; flex-shrink: 0;
+      border-radius: 3px; background: #21262d;
+    }
+    .card-poster {
+      width: 48px; height: 72px; object-fit: cover; flex-shrink: 0;
+      border-radius: 4px; background: #21262d;
+    }
     .col-tags     { margin-top: 0.25rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
     .tag-badge {
       display: inline-block; font-size: 0.6rem; font-weight: 600;
@@ -395,6 +405,7 @@ let activePage = 'top100';
 // Tag type/color lookup, keyed by lowercase tag name. Populated at load time
 // from tags.json (the same vocabulary file the bot writes via /newtag) so
 // this page never needs a manual edit when a tag is added or reclassified.
+let extraData = {};  // movies-extra.json: lowercase title -> { poster }
 let tagsData  = null;
 let TAG_LOOKUP = {};
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -414,6 +425,27 @@ async function fetchTags() {
     TAG_LOOKUP[t.toLowerCase()] = { type: 'category', color };
   });
   return tagsData;
+}
+
+async function fetchExtra() {
+  try {
+    const res = await fetch('movies-extra.json');
+    extraData = res.ok ? await res.json() : {};
+  } catch {
+    extraData = {};
+  }
+}
+
+function posterUrl(title) {
+  const p = (extraData[title.toLowerCase()] || {}).poster || '';
+  return /^https:\/\//.test(p) ? p : '';
+}
+
+function posterImg(title, cls) {
+  const url = posterUrl(title);
+  return url
+    ? `<img class="${cls}" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : '';
 }
 
 function renderTags(tagsStr) {
@@ -573,7 +605,8 @@ function buildTable({ cols, rows }) {
         }
         case 'Title': {
           const tags = idx['Tags'] !== undefined ? (row[idx['Tags']] || '') : '';
-          return `<td class="col-title">${esc(val)}${renderTags(tags)}</td>`;
+          return `<td class="col-title"><div class="title-wrap">${posterImg(val, 'poster')}` +
+            `<div class="title-text">${esc(val)}${renderTags(tags)}</div></div></td>`;
         }
         case 'Year':         return `<td class="col-year">${esc(val)}</td>`;
         case 'Director':     return `<td class="col-director">${esc(val)}</td>`;
@@ -641,6 +674,7 @@ function buildCards({ cols, rows }) {
     html += `<div class="card">
       <div class="card-header">
         <div class="${rankClass}"${rankTitle}>${isStarRank(rank) ? renderStars(rank) : esc(rank) + (cardArrow ? ' ' + cardArrow : '')}</div>
+        ${posterImg(title, 'card-poster')}
         <div class="card-body">
           <div class="card-title">${esc(title)}</div>
           ${secondary ? `<div class="card-secondary">${esc(secondary)}</div>` : ''}
@@ -698,7 +732,7 @@ async function load() {
       `<div class="loading"><div class="spinner"></div>Loading…</div>`;
   }
   try {
-    const [data] = await Promise.all([fetchMovies(), fetchTags()]);
+    const [data] = await Promise.all([fetchMovies(), fetchTags(), fetchExtra()]);
     if (activePage !== 'history') render(data);
   } catch (err) {
     if (activePage !== 'history') {
