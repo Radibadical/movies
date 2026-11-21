@@ -28,6 +28,13 @@ SPREADSHEET_ID = "12ETUXbIPiwozu_M6Y1Z1hmpsevIbBSxyJQNGbKM-22M"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&sheet=Movies"
 OUT_FILE = "movies-extra.json"
 
+# Sheet titles that OMDb spells differently (lowercase sheet title -> OMDb title).
+# The search fallback below catches most mismatches; add stubborn ones here.
+ALIASES = {
+    "star wars iv: a new hope": "Star Wars: Episode IV - A New Hope",
+    "the cook, the thief, his wife and her lover": "The Cook, the Thief, His Wife & Her Lover",
+}
+
 
 def main() -> int:
     api_key = os.environ.get("OMDB_API_KEY", "")
@@ -56,13 +63,24 @@ def main() -> int:
         if key in extra and not refresh:
             continue
         year = (row.get("Year") or "").strip()
+        omdb_title = ALIASES.get(key, title).replace("\u2019", "'")
         data = {}
-        # Try title+year first (disambiguates remakes), then title alone.
-        for with_year in ([True, False] if year.isdigit() else [False]):
-            params = {"t": title.replace("\u2019", "'"), "apikey": api_key}
-            if with_year:
-                params["y"] = year
-            data = requests.get("https://www.omdbapi.com/", params=params, timeout=10).json()
+        # 1) title+year (disambiguates remakes), 2) title alone, 3) OMDb search.
+        attempts = [{"t": omdb_title, "y": year}] if year.isdigit() else []
+        attempts += [{"t": omdb_title}, {"s": omdb_title, "type": "movie"}]
+        for extra_params in attempts:
+            data = requests.get(
+                "https://www.omdbapi.com/",
+                params={"apikey": api_key, **extra_params},
+                timeout=10,
+            ).json()
+            if "s" in extra_params and data.get("Search"):
+                hit = data["Search"][0]  # best match first
+                data = requests.get(
+                    "https://www.omdbapi.com/",
+                    params={"apikey": api_key, "i": hit["imdbID"]},
+                    timeout=10,
+                ).json()
             if data.get("Response") == "True" or "limit" in data.get("Error", "").lower():
                 break
         if data.get("Response") != "True":
@@ -77,6 +95,8 @@ def main() -> int:
             extra[key] = {"poster": poster.replace("http://", "https://")}
             fetched += 1
             print(f"  {title}")
+        else:
+            print(f"  no poster on OMDb for {title!r}")
 
     with open(OUT_FILE, "w", encoding="utf-8") as f:
         json.dump(dict(sorted(extra.items())), f, indent=1, ensure_ascii=False)
