@@ -22,7 +22,7 @@ All secrets live in `.env` (git-ignored). Never commit `.env` or `credentials.js
 | `OMDB_API_KEY` | OMDb API key (free tier: 1,000 req/day) |
 | `SHEET_NAME` | Exact name of the Google Sheet |
 | `TELEGRAM_BOT_TOKEN` | From @BotFather |
-| `ALLOWED_USER_ID` | Telegram user ID; bot ignores all other users |
+| `ALLOWED_USER_ID` | Telegram user ID; bot ignores all other users. **Required** — the bot exits at startup if it is missing/0 (it used to default to 0, which fails closed but silently) |
 
 `credentials.json` is a Google service-account key file. Both files are in `.gitignore`
 and should be `chmod 600` (owner read/write only) — verified never committed to git
@@ -58,6 +58,36 @@ manual edit, e.g. some editors rewrite the file with default 644 permissions on 
   (shared "Anyone with the link — Viewer") are intentionally public and read-only.
   `.env` and `credentials.json` (write access via the service account) are the only
   things that must never leave this machine.
+
+### Security sweep (2026-11-21)
+Full pass over the repo; nothing exploitable found. What was checked and what is still open:
+- **Secrets:** `.env` and `credentials.json` are untracked, never in any commit (checked all
+  history, including for the OMDb key value), and `chmod 600`. The repo is **public**.
+- **Web page XSS:** every sheet/History/`tags.json` value goes through `esc()` (escapes
+  `& < > "`; all attributes are double-quoted) before `innerHTML`. Poster URLs must start with
+  `https://` and are escaped; tag colors must match `HEX_RE`; there are no dynamic `href`s;
+  the only inline handlers are static (`setPage('<constant id>')`, `onerror=this.remove()`).
+  `clearTrend()`/`localStorage` trend hiding was removed. Any new interpolation of data into
+  HTML must use `esc()` or a helper that does.
+- **Bot auth:** all 20 `CommandHandler`s use `filters.User(user_id=ALLOWED_USER_ID)`
+  (re-check when adding a command); no `subprocess`/`eval`/`exec`/`pickle`; httpx logging
+  stays at WARNING so the token never reaches the journal.
+- **Actions:** the poster workflow has only `contents: write` and uses the `OMDB_API_KEY`
+  secret. Actions are pinned to major tags (`@v5`, `@v6`), not commit SHAs (low risk).
+- **Open / by design:**
+  - GitHub **secret scanning, push protection and Dependabot security updates are all
+    disabled** on the repo (free for public repos; enable in Settings → Code security).
+  - **No branch protection** on `main`; the poster workflow pushes straight to `main`, so
+    turning it on would break that unless the workflow is changed.
+  - **The whole spreadsheet is publicly readable** ("Anyone with the link"; the ID is in the
+    page source), every tab: Watch List, TV, Weekend Queue and History. History now also
+    stores **full previous reviews** (`Note Replaced`, see "Previous reviews are kept"), so a
+    review you replace or clear is still public in History. To remove one, edit that History
+    row by hand.
+  - No Content-Security-Policy (GitHub Pages can't set headers; a `<meta>` CSP would need
+    `'unsafe-inline'` for the current inline handlers/scripts, so little gain).
+  - `requirements.txt` uses `>=` lower bounds, no lockfile.
+  - Sheet formula injection via `/note` etc. is accepted (owner-only), see Security above.
 
 ## Google Sheet structure
 
@@ -409,6 +439,32 @@ by current row order. Skips star-rated and blank Rank cells. Batch `update_cells
 
 `sort_star_rated_rows` logic is handled inline during `_reposition_by_rank` and
 `_enforce_200_limit` — there is no standalone sort function in bot.py.
+
+## Testing and workflow notes
+
+- **Workflow used:** branch off `main` → change → test → PR → squash-merge (the user has said
+  PRs may be merged without asking, once tested) → `git checkout main && git pull`. GitHub
+  Pages redeploys in ~40s; check with `gh run list --workflow pages-build-deployment` and by
+  grepping the live page. **After any `bot.py` change:** `systemctl --user restart
+  movie-list-bot.service`. **After any `history_trigger.gs` change:** the user must re-paste
+  it into Extensions → Apps Script by hand (the sheet runs the saved copy, not the repo's).
+- **Web UI tests:** Playwright for Python is in the user site-packages (`python3`, *not*
+  `.venv/bin/python`, and don't use `-I`, which hides it). Serve a copy of the repo with
+  `http.server`, load it with desktop (1280px) and phone (390px, `has_touch`, `is_mobile`)
+  contexts. Google's sheet export is slow (often 30-120s per page load), so run browser tests
+  as background tasks with a log file rather than in the foreground. To add test History rows,
+  use `page.route(...)` with `route.fetch()` and append to the real response instead of
+  downloading it separately with urllib (that hung and once returned HTTP 400).
+- **Overflow check:** compare `document.documentElement.scrollWidth` to `clientWidth`,
+  *not* `innerWidth` (it grows with the overflow and hides it). Wait for `.card-poster` on
+  phone and `.poster` on desktop; the other layout's elements exist but are hidden.
+- **Bot tests:** there is no test suite. Logic was checked with throwaway scripts that fake
+  the spreadsheet (`get_spreadsheet`, `WS`/`SS` stand-ins with `get_all_values`,
+  `update_cell`, `insert_row`, `update`, `batch_clear`, `row_count`) and fake `Update` objects
+  (`reply_text`), then called the `cmd_*` coroutines directly. Never run commands against the
+  live sheet to test.
+- Don't `pkill -f <script name>` from the same shell command line: it matches itself and
+  kills the shell. Kill by PID.
 
 ## Dependencies
 

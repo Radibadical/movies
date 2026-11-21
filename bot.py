@@ -2079,6 +2079,7 @@ def main():
     missing = [
         name for name, val in [
             ("TELEGRAM_BOT_TOKEN", TELEGRAM_BOT_TOKEN),
+            ("ALLOWED_USER_ID", ALLOWED_USER_ID),  # 0 = unset; required so the auth filter can't be silently empty
             ("OMDB_API_KEY", OMDB_API_KEY),
             ("SHEET_NAME", SHEET_NAME),
         ]
