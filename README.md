@@ -11,7 +11,11 @@ A personal movie tracking system built on Google Sheets, with a Telegram bot for
 - Maintains a ranked list of up to 200 movies, with star ratings for the rest
 - Pulls **Year**, **Director**, **Country**, **Genre**, **IMDB Rating**, and **Metascore** from the [OMDb API](https://www.omdbapi.com/) automatically
 - Tracks a **Watch List** (with a separate TV Watch List)
-- Logs every rank change and watch event in a History tab
+- Logs every rank change and watch event in a History tab, and shows each movie's **full rank history** (site toggle and `/rankhistory`)
+- Keeps **earlier versions of your reviews** instead of overwriting them (`/notehistory`, also shown on the site)
+- Keeps reviews **collapsed on the site until clicked**, so they don't spoil movies
+- Shows **movie posters** (bigger on hover or tap), refreshed daily by a GitHub Actions job
+- Keeps an ordered **Weekend Queue** of movies lined up to watch (`/queue`)
 - Exposes everything through a Telegram bot
 
 ---
