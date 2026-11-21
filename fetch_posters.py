@@ -1,29 +1,32 @@
 #!/usr/bin/env python3
 """Backfill movies-extra.json with OMDb poster URLs for the ranked Movies list.
 
-Run from the project directory (needs .env + credentials.json). Titles already
-in movies-extra.json are skipped, so re-runs only spend OMDb quota on new
-movies. Commit and push movies-extra.json afterwards; index.html reads it.
+Reads the public CSV export of the Movies sheet (same source as index.html), so
+no Google credentials are needed. Only OMDB_API_KEY is required (from the
+environment or .env). Titles already in movies-extra.json are skipped, so
+re-runs only spend OMDb quota on new movies; --refresh re-fetches everything.
 
-    .venv/bin/python fetch_posters.py [--refresh]
+Runs daily in GitHub Actions (.github/workflows/update-posters.yml), and can
+also be run by hand:  python fetch_posters.py [--refresh]
 """
 
+import csv
+import io
 import json
 import os
 import sys
 
-import gspread
 import requests
-from dotenv import load_dotenv
-from google.oauth2.service_account import Credentials
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:  # python-dotenv is optional (not installed in CI)
+    pass
 
+SPREADSHEET_ID = "12ETUXbIPiwozu_M6Y1Z1hmpsevIbBSxyJQNGbKM-22M"
+CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&sheet=Movies"
 OUT_FILE = "movies-extra.json"
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
-    "https://www.googleapis.com/auth/drive.readonly",
-]
 
 
 def main() -> int:
@@ -33,11 +36,9 @@ def main() -> int:
         return 1
     refresh = "--refresh" in sys.argv
 
-    creds = Credentials.from_service_account_file(
-        os.environ.get("CREDENTIALS_FILE", "credentials.json"), scopes=SCOPES
-    )
-    ws = gspread.authorize(creds).open(os.environ["SHEET_NAME"]).worksheet("Movies")
-    rows = ws.get_all_records()
+    resp = requests.get(CSV_URL, timeout=30)
+    resp.raise_for_status()
+    rows = list(csv.DictReader(io.StringIO(resp.content.decode("utf-8"))))
 
     try:
         with open(OUT_FILE, encoding="utf-8") as f:
@@ -47,19 +48,18 @@ def main() -> int:
 
     fetched = 0
     for row in rows:
-        title = str(row.get("Title", "")).strip()
-        rank = str(row.get("Rank", "")).strip()
+        title = (row.get("Title") or "").strip()
+        rank = (row.get("Rank") or "").strip()
         if not title or not rank.isdigit():  # top 200 only; skip stars/blank
             continue
         key = title.lower()
         if key in extra and not refresh:
             continue
         params = {"t": title, "apikey": api_key}
-        year = str(row.get("Year", "")).strip()
+        year = (row.get("Year") or "").strip()
         if year.isdigit():
             params["y"] = year
-        resp = requests.get("https://www.omdbapi.com/", params=params, timeout=10)
-        data = resp.json()
+        data = requests.get("https://www.omdbapi.com/", params=params, timeout=10).json()
         if data.get("Response") != "True":
             error = data.get("Error", "")
             print(f"  skip {title!r}: {error}")
