@@ -29,6 +29,8 @@ A personal movie tracking system built on Google Sheets, with a Telegram bot for
 | `/newtag <tag> | <vibe\|style\|category> [| <#hexcolor>]` | Register a new tag (saved to `tags.json`); `category` needs a hex color |
 | `/note <title> | <note>` | Add or update the Notes field; the previous note is saved to History |
 | `/notehistory <title>` | Show a movie's current note and every earlier version |
+| `/queue [title [| position] | clear]` | Weekend Queue: no args lists it; a title adds it (or moves it if already queued); `| 1` puts it first; `clear` empties it |
+| `/unqueue <title>` | Remove a movie from the Weekend Queue |
 | `/find <query>` | Search all tabs and all columns |
 | `/omdb <title>` | OMDb lookup without touching any sheet |
 | `/watchlist [tag]` | Show the Watch List, optionally filtered by tag |
@@ -116,6 +118,7 @@ systemctl --user enable --now movie-list-bot.service
 | Watch List | Watch Order, Title, Year, Director, Country, Genre, Tags, IMDB Rating, Metascore, Date Added, Notes |
 | TV Watch List | same as Watch List |
 | History | Date, Type, Title, Detail |
+| Weekend Queue | Order, Title, Year, Director, Genre, Date Added (auto-created by `/queue`) |
 
 Ranks are either integers (1–200, inside a Sheets Table) or star strings (`★ ★ ★ ★ ✮`).
 

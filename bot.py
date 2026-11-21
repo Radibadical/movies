@@ -48,6 +48,8 @@ MOVIE_LIST_COLUMNS = ["Rank", "Title", "Year", "Director", "Country", "Genre", "
 WATCH_LIST_COLUMNS = ["Watch Order", "Title", "Year", "Director", "Country", "Genre", "Tags", "IMDB Rating", "Metascore", "Date Added", "Notes"]
 LOG_TAB = "History"
 LOG_COLUMNS = ["Date", "Type", "Title", "Detail"]
+QUEUE_TAB = "Weekend Queue"
+QUEUE_COLUMNS = ["Order", "Title", "Year", "Director", "Genre", "Date Added"]
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -183,6 +185,9 @@ def _help_text() -> str:
         "/reorder — Re-sort Movies by Rank (use after manual edits in Google Sheets)\n\n"
         "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes (the old note is saved)\n\n"
         "/notehistory <code>&lt;title&gt;</code> — Show a movie's current note and earlier versions\n\n"
+        "/queue <code>[title [| position] | clear]</code> — Weekend Queue: no args lists it; a title adds it "
+        "(or moves it if already queued)\n\n"
+        "/unqueue <code>&lt;title&gt;</code> — Remove a movie from the Weekend Queue\n\n"
         "/find <code>&lt;query&gt;</code> — Search all sheets\n\n"
         "/omdb <code>&lt;title&gt;</code> — Look up OMDb info without modifying any sheet\n\n"
         "/watchlist <code>[tag]</code> — Show the Watch List\n\n"
@@ -1219,6 +1224,14 @@ async def cmd_watched(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif note_text:
         msg_lines.append("(Note ignored — no target sheet specified.)")
 
+    # Watching a queued movie takes it off the Weekend Queue (#29).
+    if not any("Could not add" in m for m in msg_lines):
+        try:
+            if _remove_from_queue(ss, canonical_title):
+                msg_lines.append("Removed from the Weekend Queue.")
+        except Exception:
+            pass
+
     await update.message.reply_text("\n".join(msg_lines), parse_mode="HTML")
 
 
@@ -1594,6 +1607,184 @@ async def cmd_notehistory(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(chunk, parse_mode="HTML")
 
 
+# ---------------------------------------------------------------------------
+# Weekend Queue (#29) — a small ordered tab of movies lined up for the weekend
+# ---------------------------------------------------------------------------
+
+def _get_queue_ws(ss, create: bool):
+    """Return the Weekend Queue worksheet; lazily create it (like History) if asked."""
+    try:
+        return ss.worksheet(QUEUE_TAB)
+    except gspread.WorksheetNotFound:
+        if not create:
+            return None
+        ws = ss.add_worksheet(QUEUE_TAB, rows=100, cols=len(QUEUE_COLUMNS))
+        ws.update([QUEUE_COLUMNS], "A1")
+        return ws
+
+
+def _read_queue(ws) -> list[list[str]]:
+    """Queue rows in sheet order, padded to QUEUE_COLUMNS; blank-title rows skipped."""
+    width = len(QUEUE_COLUMNS)
+    rows = []
+    for r in ws.get_all_values()[1:]:
+        padded = (r + [""] * width)[:width]
+        if padded[1].strip():
+            rows.append(padded)
+    return rows
+
+
+def _write_queue(ws, rows: list[list[str]]) -> None:
+    """Renumber the Order column 1..n and rewrite the whole queue, clearing any tail."""
+    for i, r in enumerate(rows, start=1):
+        r[0] = i
+    ws.batch_clear([f"A2:{chr(ord('A') + len(QUEUE_COLUMNS) - 1)}{max(ws.row_count, len(rows) + 1)}"])
+    if rows:
+        ws.update(rows, "A2")
+
+
+def _queue_position(rows: list[list[str]], title: str) -> int | None:
+    """0-based index of a title in the queue (case-insensitive), or None."""
+    t = title.strip().lower()
+    for i, r in enumerate(rows):
+        if r[1].strip().lower() == t:
+            return i
+    return None
+
+
+def _remove_from_queue(ss, title: str) -> bool:
+    """Drop a title from the queue if present. Returns True if something was removed."""
+    ws = _get_queue_ws(ss, create=False)
+    if ws is None:
+        return False
+    rows = _read_queue(ws)
+    idx = _queue_position(rows, title)
+    if idx is None:
+        return False
+    del rows[idx]
+    _write_queue(ws, rows)
+    return True
+
+
+def _queue_lines(rows: list[list[str]]) -> list[str]:
+    lines = []
+    for i, r in enumerate(rows, start=1):
+        meta = " · ".join(x for x in (r[3], r[4]) if x)
+        year = f" ({html(r[2])})" if r[2] else ""
+        lines.append(f"{i}. <b>{html(r[1])}</b>{year}" + (f" — {html(meta)}" if meta else ""))
+    return lines
+
+
+async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/queue [title [| position] | clear] — Manage the Weekend Queue."""
+    text = " ".join(context.args).strip()
+    usage = ("Usage:\n/queue — show the queue\n/queue <title> [| position] — add (or move) a movie\n"
+             "/queue clear — empty the queue\n/unqueue <title> — remove one")
+
+    position = None
+    title = text
+    if "|" in text:
+        title, _, pos_text = text.partition("|")
+        title, pos_text = title.strip(), pos_text.strip()
+        if not title or not pos_text.isdigit() or int(pos_text) < 1:
+            await update.message.reply_text(usage)
+            return
+        position = int(pos_text)
+
+    try:
+        ss = get_spreadsheet()
+        ws = _get_queue_ws(ss, create=bool(text) and text.lower() != "clear")
+        rows = _read_queue(ws) if ws is not None else []
+    except Exception as err:
+        await update.message.reply_text(f"Could not open the Weekend Queue: {err}")
+        return
+
+    if not text:
+        if not rows:
+            await update.message.reply_text("The Weekend Queue is empty. Add one with /queue <title>.")
+            return
+        for chunk in _send_chunked([f"<b>Weekend Queue</b> ({len(rows)})\n"] + _queue_lines(rows), "\n"):
+            await update.message.reply_text(chunk, parse_mode="HTML")
+        return
+
+    if text.lower() == "clear":
+        if not rows:
+            await update.message.reply_text("The Weekend Queue is already empty.")
+            return
+        _write_queue(ws, [])
+        await update.message.reply_text(f"Cleared the Weekend Queue ({len(rows)} removed).")
+        return
+
+    # Already queued: with a position it moves the movie, without one it just reports.
+    idx = _queue_position(rows, title)
+    if idx is not None:
+        if position is None:
+            await update.message.reply_text(
+                f"<b>{html(rows[idx][1])}</b> is already #{idx + 1} in the queue. "
+                f"Use /queue {html(title)} | 1 to move it.", parse_mode="HTML")
+            return
+        entry = rows.pop(idx)
+    else:
+        # Prefer the Watch List row for details, then any other tab, then OMDb.
+        results = _search_all_sheets(ss, title)
+        results.sort(key=lambda r: WATCH_LIST_KEYWORD not in r[0])
+        entry = None
+        if results:
+            _ws_name, _row_num, padded, headers = results[0]
+            get = lambda f: padded[headers.index(f)].strip() if f in headers else ""
+            entry = ["", get("Title") or title, get("Year"), get("Director"), get("Genre"),
+                     datetime.date.today().isoformat()]
+        else:
+            data = await _fetch_omdb_safe(update, title)
+            if data is None:
+                return  # _fetch_omdb_safe already replied
+            entry = ["", data.get("Title", title), clean(data.get("Year", "")),
+                     clean(data.get("Director", "")), clean(data.get("Genre", "")),
+                     datetime.date.today().isoformat()]
+        # Re-check with the canonical title (the user may have typed a variant).
+        again = _queue_position(rows, entry[1])
+        if again is not None:
+            await update.message.reply_text(
+                f"<b>{html(entry[1])}</b> is already #{again + 1} in the queue.", parse_mode="HTML")
+            return
+
+    insert_at = len(rows) if position is None else min(position - 1, len(rows))
+    rows.insert(insert_at, entry)
+    try:
+        _write_queue(ws, rows)
+    except Exception as err:
+        await update.message.reply_text(f"Could not update the Weekend Queue: {err}")
+        return
+    verb = "Moved" if idx is not None else "Queued"
+    year = f" ({html(entry[2])})" if entry[2] else ""
+    await update.message.reply_text(
+        f"{verb} <b>{html(entry[1])}</b>{year} at #{insert_at + 1} of {len(rows)} for the weekend.",
+        parse_mode="HTML")
+
+
+async def cmd_unqueue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/unqueue <title> — Remove a movie from the Weekend Queue."""
+    title = " ".join(context.args).strip()
+    if not title:
+        await update.message.reply_text("Usage: /unqueue <title>")
+        return
+    try:
+        ss = get_spreadsheet()
+        ws = _get_queue_ws(ss, create=False)
+        rows = _read_queue(ws) if ws is not None else []
+        idx = _queue_position(rows, title)
+        if idx is None:
+            await update.message.reply_text(f"'{title}' isn't in the Weekend Queue.")
+            return
+        removed = rows.pop(idx)[1]
+        _write_queue(ws, rows)
+    except Exception as err:
+        await update.message.reply_text(f"Could not update the Weekend Queue: {err}")
+        return
+    await update.message.reply_text(
+        f"Removed <b>{html(removed)}</b> from the Weekend Queue ({len(rows)} left).", parse_mode="HTML")
+
+
 async def cmd_newtag(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/newtag <tag> | <vibe|style|category> [| <#hexcolor>] — Register a new tag."""
     text = " ".join(context.args).strip()
@@ -1769,6 +1960,8 @@ BOT_COMMANDS = [
     BotCommand("newtag", "Register a new tag"),
     BotCommand("note", "Add/update a movie's note"),
     BotCommand("notehistory", "Show a movie's note and earlier versions"),
+    BotCommand("queue", "Weekend queue: list, add, move or clear"),
+    BotCommand("unqueue", "Remove a movie from the weekend queue"),
     BotCommand("history", "Show recent rank changes and watches"),
     BotCommand("trend", "List or reset rank trends"),
     BotCommand("reorder", "Re-sort Movies sheet by rank"),
@@ -1811,6 +2004,8 @@ def main():
     app.add_handler(CommandHandler("trend",     cmd_trend,     filters=user_filter))
     app.add_handler(CommandHandler("note",      cmd_note,      filters=user_filter))
     app.add_handler(CommandHandler("notehistory", cmd_notehistory, filters=user_filter))
+    app.add_handler(CommandHandler("queue",     cmd_queue,     filters=user_filter))
+    app.add_handler(CommandHandler("unqueue",   cmd_unqueue,   filters=user_filter))
     app.add_handler(CommandHandler("tag",       cmd_tag,       filters=user_filter))
     app.add_handler(CommandHandler("untag",     cmd_untag,     filters=user_filter))
     app.add_handler(CommandHandler("newtag",    cmd_newtag,    filters=user_filter))
