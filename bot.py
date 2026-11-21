@@ -185,6 +185,7 @@ def _help_text() -> str:
         "/reorder — Re-sort Movies by Rank (use after manual edits in Google Sheets)\n\n"
         "/note <code>&lt;title&gt; | &lt;note&gt;</code> — Add or update a movie's Notes (the old note is saved)\n\n"
         "/notehistory <code>&lt;title&gt;</code> — Show a movie's current note and earlier versions\n\n"
+        "/rankhistory <code>&lt;title&gt;</code> — Show every rank a movie has had, newest first\n\n"
         "/queue <code>[title [| position] | clear]</code> — Weekend Queue: no args lists it; a title adds it "
         "(or moves it if already queued)\n\n"
         "/unqueue <code>&lt;title&gt;</code> — Remove a movie from the Weekend Queue\n\n"
@@ -1551,6 +1552,104 @@ async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+def _parse_rank_change(detail: str) -> tuple[str, str] | None:
+    """Parse a Movies "Rank Changed" History detail ("Movies: 5 → 10") into (from, to).
+    Returns None for other sheets (e.g. Watch List), unparseable details, or no-op changes.
+    Mirrors the web UI's parsing in fetchHistory()."""
+    if not detail.startswith("Movies:") or "→" not in detail:
+        return None
+    before, _, after = detail.rpartition("→")
+    old = before.replace("Movies:", "", 1).strip()
+    raw_new = after.strip()
+    new = re.sub(r"\s*\(.*\)\s*$", "", raw_new) or raw_new
+    if not new or old == new:
+        return None
+    return old, new
+
+
+def _collapse_rank_changes(changes: list[tuple[str, str, str]]) -> list[tuple[str, str, str, int]]:
+    """Collapse same-day churn into one net line per day. `changes` is oldest-first
+    (date, from, to); returns (date, from, to, moves), dropping days that ended where
+    they started. Mirrors the web UI (fetchHistory)."""
+    merged: list[list] = []
+    for date, old, new in changes:
+        if merged and merged[-1][0] == date:
+            merged[-1][2] = new
+            merged[-1][3] += 1
+        else:
+            merged.append([date, old, new, 1])
+    return [tuple(m) for m in merged if m[1] != m[2]]
+
+
+def _fmt_rank(value: str) -> str:
+    if value.isdigit():
+        return f"#{value}"
+    return {"(new)": "new", "(blank)": "unranked"}.get(value, value)
+
+
+async def cmd_rankhistory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/rankhistory <title> — Every rank a movie has had, newest first."""
+    title = " ".join(context.args).strip()
+    if not title:
+        await update.message.reply_text("Usage: /rankhistory <title>")
+        return
+
+    try:
+        ss = get_spreadsheet()
+        all_values = ss.worksheet(LOG_TAB).get_all_values()
+    except gspread.WorksheetNotFound:
+        all_values = []
+    except Exception as err:
+        await update.message.reply_text(f"Could not read History: {err}")
+        return
+
+    changes = []  # (date, from, to), oldest first
+    canonical = title
+    if len(all_values) > 1:
+        ci = {h: i for i, h in enumerate(all_values[0])}
+        for row in all_values[1:]:
+            padded = row + [""] * max(0, len(all_values[0]) - len(row))
+            if (padded[ci.get("Type", 1)] != "Rank Changed"
+                    or padded[ci.get("Title", 2)].strip().lower() != title.lower()):
+                continue
+            parsed = _parse_rank_change(padded[ci.get("Detail", 3)])
+            if parsed:
+                canonical = padded[ci.get("Title", 2)].strip()
+                changes.append((padded[ci.get("Date", 0)], *parsed))
+
+    current = ""
+    try:
+        for ws_name, _row, padded, headers in _search_all_sheets(ss, title):
+            if ws_name == "Movies" and "Rank" in headers:
+                current = padded[headers.index("Rank")].strip()
+                canonical = padded[headers.index("Title")].strip() or canonical
+                break
+    except Exception:
+        pass
+
+    if not changes and not current:
+        await update.message.reply_text(f"No rank history found for '{title}'.")
+        return
+
+    lines = [f"<b>Rank history for {html(canonical)}</b>\n"]
+    lines.append(f"<b>Current:</b> {html(_fmt_rank(current)) if current else '(not ranked)'}")
+    days = _collapse_rank_changes(changes)
+    if not days:
+        lines.append("\nNo rank changes recorded yet.")
+    else:
+        lines.append("")
+        for date, old, new, moves in sorted(reversed(days), key=lambda c: c[0], reverse=True):
+            extra = f" · {moves} moves" if moves > 1 else ""
+            lines.append(f"{html(date)}  {html(_fmt_rank(old))} → {html(_fmt_rank(new))}{extra}")
+
+    msg = "\n".join(lines)
+    if len(msg) <= 4000:
+        await update.message.reply_text(msg, parse_mode="HTML")
+    else:
+        for chunk in _send_chunked(lines, "\n"):
+            await update.message.reply_text(chunk, parse_mode="HTML")
+
+
 async def cmd_notehistory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/notehistory <title> — Show a movie's current note and every note it replaced."""
     title = " ".join(context.args).strip()
@@ -1960,6 +2059,7 @@ BOT_COMMANDS = [
     BotCommand("newtag", "Register a new tag"),
     BotCommand("note", "Add/update a movie's note"),
     BotCommand("notehistory", "Show a movie's note and earlier versions"),
+    BotCommand("rankhistory", "Show every rank a movie has had"),
     BotCommand("queue", "Weekend queue: list, add, move or clear"),
     BotCommand("unqueue", "Remove a movie from the weekend queue"),
     BotCommand("history", "Show recent rank changes and watches"),
@@ -2004,6 +2104,7 @@ def main():
     app.add_handler(CommandHandler("trend",     cmd_trend,     filters=user_filter))
     app.add_handler(CommandHandler("note",      cmd_note,      filters=user_filter))
     app.add_handler(CommandHandler("notehistory", cmd_notehistory, filters=user_filter))
+    app.add_handler(CommandHandler("rankhistory", cmd_rankhistory, filters=user_filter))
     app.add_handler(CommandHandler("queue",     cmd_queue,     filters=user_filter))
     app.add_handler(CommandHandler("unqueue",   cmd_unqueue,   filters=user_filter))
     app.add_handler(CommandHandler("tag",       cmd_tag,       filters=user_filter))
