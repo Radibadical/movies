@@ -157,7 +157,7 @@
     }
 
     .th-rank     { width: 3.5rem; }
-    .th-title    { min-width: 180px; }
+    .th-title    { min-width: 280px; }
     .th-year     { width: 4rem; }
     .th-director { width: 150px; }
     .th-country  { width: 160px; }
@@ -198,14 +198,33 @@
     }
     .col-title    { font-weight: 500; color: #e6edf3; font-size: 1.125rem; }
     .title-wrap   { display: flex; align-items: flex-start; gap: 0.75rem; }
-    .title-text   { min-width: 0; }
+    .cell-title-text { min-width: 0; }  /* not .title-text: the site header already uses that name */
     .poster {
-      width: 40px; height: 60px; object-fit: cover; flex-shrink: 0;
-      border-radius: 3px; background: #21262d;
+      width: 64px; height: 96px; object-fit: cover; flex-shrink: 0;
+      border-radius: 4px; background: #21262d; cursor: zoom-in;
     }
     .card-poster {
-      width: 48px; height: 72px; object-fit: cover; flex-shrink: 0;
-      border-radius: 4px; background: #21262d;
+      width: 72px; height: 108px; object-fit: cover; flex-shrink: 0;
+      border-radius: 4px; background: #21262d; cursor: zoom-in;
+    }
+    /* Full-screen poster viewer for touch devices (tap a poster to open,
+       tap anywhere or press Escape to close). */
+    #poster-lightbox {
+      position: fixed; inset: 0; z-index: 2000; display: none;
+      align-items: center; justify-content: center; cursor: zoom-out;
+      background: rgba(0,0,0,0.88);
+    }
+    #poster-lightbox.open { display: flex; }
+    #poster-lightbox img {
+      max-width: 90vw; max-height: 85vh; width: auto; height: auto;
+      border-radius: 6px; box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+    }
+    /* Floating enlarged poster shown on hover (fixed, so the table's
+       horizontal-scroll wrapper can't clip it). */
+    #poster-zoom {
+      position: fixed; z-index: 1000; display: none; pointer-events: none;
+      height: 420px; max-height: 80vh; width: auto; border-radius: 6px;
+      border: 1px solid #30363d; box-shadow: 0 8px 32px rgba(0,0,0,0.7);
     }
     .col-tags     { margin-top: 0.25rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
     .tag-badge {
@@ -234,6 +253,8 @@
       color: #8b949e; font-style: italic; line-height: 1.55;
       padding-left: 3.5rem;
     }
+    /* Main-table notes line up with the title text, past the 64px poster. */
+    .col-notes.poster-notes { padding-left: 5.5rem; }
 
     /* ═══════════════════════════════════════════════
        MOBILE CARDS (< 700px)
@@ -263,7 +284,7 @@
       color: #a07820;
       font-size: 1.25rem;
       font-variant-numeric: tabular-nums;
-      min-width: 2.5rem;
+      min-width: 2rem;
       padding-top: 0.15rem;
       flex-shrink: 0;
     }
@@ -426,6 +447,59 @@ async function fetchTags() {
   });
   return tagsData;
 }
+
+// ── Poster hover zoom ────────────────────────────────────────────────────────
+const zoomImg = document.createElement('img');
+zoomImg.id = 'poster-zoom';
+zoomImg.alt = '';
+zoomImg.referrerPolicy = 'no-referrer';
+document.body.appendChild(zoomImg);
+
+function placeZoom(ev) {
+  const gap = 16;
+  const w = zoomImg.offsetWidth || 280;
+  const h = zoomImg.offsetHeight || 420;
+  let x = ev.clientX + gap;
+  if (x + w > window.innerWidth - 8) x = ev.clientX - gap - w;
+  let y = ev.clientY - h / 2;
+  y = Math.max(8, Math.min(y, window.innerHeight - h - 8));
+  zoomImg.style.left = Math.max(8, x) + 'px';
+  zoomImg.style.top = y + 'px';
+}
+
+// Hover zoom only on devices that can really hover; touch devices (including
+// tablets showing the table) use the tap-to-open lightbox below instead.
+const canHover = window.matchMedia('(hover: hover)');
+
+const lightbox = document.createElement('div');
+lightbox.id = 'poster-lightbox';
+lightbox.innerHTML = '<img alt="" referrerpolicy="no-referrer">';
+document.body.appendChild(lightbox);
+const closeLightbox = () => lightbox.classList.remove('open');
+lightbox.addEventListener('click', closeLightbox);
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeLightbox(); });
+document.addEventListener('click', ev => {
+  const img = ev.target.closest && ev.target.closest('.card-poster, .poster');
+  if (!img) return;
+  if (img.classList.contains('poster') && canHover.matches) return;
+  lightbox.firstChild.src = img.src;
+  lightbox.classList.add('open');
+});
+
+document.addEventListener('mouseover', ev => {
+  if (!canHover.matches) return;
+  const img = ev.target.closest && ev.target.closest('.poster');
+  if (!img) return;
+  zoomImg.src = img.src;
+  zoomImg.style.display = 'block';
+  placeZoom(ev);
+});
+document.addEventListener('mousemove', ev => {
+  if (zoomImg.style.display === 'block' && ev.target.closest && ev.target.closest('.poster')) placeZoom(ev);
+});
+document.addEventListener('mouseout', ev => {
+  if (ev.target.closest && ev.target.closest('.poster')) zoomImg.style.display = 'none';
+});
 
 async function fetchExtra() {
   try {
@@ -606,7 +680,7 @@ function buildTable({ cols, rows }) {
         case 'Title': {
           const tags = idx['Tags'] !== undefined ? (row[idx['Tags']] || '') : '';
           return `<td class="col-title"><div class="title-wrap">${posterImg(val, 'poster')}` +
-            `<div class="title-text">${esc(val)}${renderTags(tags)}</div></div></td>`;
+            `<div class="cell-title-text">${esc(val)}${renderTags(tags)}</div></div></td>`;
         }
         case 'Year':         return `<td class="col-year">${esc(val)}</td>`;
         case 'Director':     return `<td class="col-director">${esc(val)}</td>`;
@@ -622,7 +696,7 @@ function buildTable({ cols, rows }) {
     body += `<tr class="main-row">${tds}</tr>`;
     if (note) {
       body += `<tr class="notes-row"><td></td>` +
-        `<td colspan="${colCount - 1}" class="col-notes">${esc(note)}</td></tr>`;
+        `<td colspan="${colCount - 1}" class="col-notes poster-notes">${esc(note)}</td></tr>`;
     }
   }
 

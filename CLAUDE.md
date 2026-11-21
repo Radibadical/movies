@@ -456,6 +456,16 @@ year can match a different film with no poster (e.g. Snatch 2000 vs 2001). `.git
 "Run workflow") and commits `movies-extra.json` to `main` when it changes. Requires the
 `OMDB_API_KEY` repo secret (Settings → Secrets and variables → Actions).
 
+**Poster sizes and viewing:** desktop thumbnails are 64×96 (`.poster`), phone cards 72×108
+(`.card-poster`). Devices that can hover (`@media (hover: hover)` via `matchMedia`) get a
+420px floating zoom (`#poster-zoom`) that follows the cursor; touch devices (phones and
+tablets using the table) tap a poster to open a full-screen lightbox (`#poster-lightbox`;
+tap or Escape closes). The table's title block uses `.cell-title-text` — don't rename it
+back to `.title-text`, which the site header already uses with `flex-shrink: 0` and
+`text-align: center` (it stopped titles wrapping and made them overprint the Year column).
+Main-table notes use `.poster-notes` to indent past the poster; the Recently Watched tab
+has no posters and keeps the smaller `.col-notes` indent.
+
 ### Recently Watched tab
 
 `buildHistoryContent` builds a `movieLookup` dict keyed by lowercase title from the
