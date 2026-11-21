@@ -459,8 +459,14 @@ year can match a different film with no poster (e.g. Snatch 2000 vs 2001). `.git
 **Poster sizes and viewing:** desktop thumbnails are 64×96 (`.poster`), phone cards 72×108
 (`.card-poster`). Devices that can hover (`@media (hover: hover)` via `matchMedia`) get a
 420px floating zoom (`#poster-zoom`) that follows the cursor; touch devices (phones and
-tablets using the table) tap a poster to open a full-screen lightbox (`#poster-lightbox`;
-tap or Escape closes). The table's title block uses `.cell-title-text` — don't rename it
+tablets using the table) tap a poster to open a lightbox (`#poster-lightbox`): the poster
+is capped at 78vw × 68vh so dark backdrop shows around it, with a visible × button
+(`.lb-close`) and a "Tap anywhere to close" hint; a tap anywhere or Escape also closes.
+`.page-nav` and `.bottom-nav` use `overflow-x: auto` so a narrow phone scrolls the tab row
+instead of widening the whole page — that overflow (414px page on a 390px phone) used to
+shift fixed overlays off-center and clip the close button. When testing mobile layout,
+check `documentElement.scrollWidth` against `clientWidth`, not `innerWidth` (which grows
+with the overflow and hides it). The table's title block uses `.cell-title-text` — don't rename it
 back to `.title-text`, which the site header already uses with `flex-shrink: 0` and
 `text-align: center` (it stopped titles wrapping and made them overprint the Year column).
 Main-table notes use `.poster-notes` to indent past the poster; the Recently Watched tab
