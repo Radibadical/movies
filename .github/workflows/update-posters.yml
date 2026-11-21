@@ -23,12 +23,12 @@ jobs:
         run: python fetch_posters.py
       - name: Commit if changed
         run: |
-          if git diff --quiet -- movies-extra.json; then
+          git add movies-extra.json
+          if git diff --cached --quiet; then
             echo "No changes"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add movies-extra.json
           git commit -m "Update movie posters"
           git push

@@ -55,11 +55,16 @@ def main() -> int:
         key = title.lower()
         if key in extra and not refresh:
             continue
-        params = {"t": title, "apikey": api_key}
         year = (row.get("Year") or "").strip()
-        if year.isdigit():
-            params["y"] = year
-        data = requests.get("https://www.omdbapi.com/", params=params, timeout=10).json()
+        data = {}
+        # Try title+year first (disambiguates remakes), then title alone.
+        for with_year in ([True, False] if year.isdigit() else [False]):
+            params = {"t": title.replace("\u2019", "'"), "apikey": api_key}
+            if with_year:
+                params["y"] = year
+            data = requests.get("https://www.omdbapi.com/", params=params, timeout=10).json()
+            if data.get("Response") == "True" or "limit" in data.get("Error", "").lower():
+                break
         if data.get("Response") != "True":
             error = data.get("Error", "")
             print(f"  skip {title!r}: {error}")
