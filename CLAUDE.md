@@ -555,10 +555,16 @@ Integer-ranked movies show an up/down arrow next to their rank if a "Rank Change
 event exists in the History tab within the last **year** (previously 30 days).
 
 - Computed in `fetchHistory()` → `rankChanges` object, keyed by lowercase title.
-- Suppressed per-title via `localStorage['movieTrends']` — clicking an arrow stores
-  the current rank; if History shows the same rank as stored, arrow is hidden.
-- `/trend reset <title>` in the bot appends a "Trend Reset" History entry, which
-  clears the arrow on next page load (independent of localStorage).
+- Arrows are **not clickable and can't be hidden from the page**. They used to be: clicking
+  one wrote `localStorage['movieTrends']`, which hid it in that visitor's browser only (it
+  never changed History or what anyone else saw). That was removed; `fetchHistory()` no
+  longer reads `localStorage`, and a leftover `movieTrends` key in someone's browser is
+  ignored. Every visitor sees the same arrows, derived purely from the History sheet. Hover
+  text (`trendTip()`) shows e.g. "Rank #12 → #9 on 2026-10-03".
+- The only way to clear an arrow is `/trend reset <title>` in the bot (owner-only via the
+  `ALLOWED_USER_ID` filter), which appends a "Trend Reset" History entry; the arrow clears
+  for everyone on next page load. Rank history itself is never deleted — a reset only
+  stops the arrow until the next rank change.
 - `/trend list` in the bot also uses a 1-year window.
 
 ### CSS style values (index.html)
