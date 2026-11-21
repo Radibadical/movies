@@ -81,7 +81,7 @@ One spreadsheet, multiple tabs managed by `WORKSHEET_NAMES` in `bot.py`.
 
 **History log tab** (columns: Date, Type, Title, Detail):
 - History — auto-created on first event; not in WORKSHEET_NAMES
-- Type values: "Rank Changed" (from `/rank`, `/watched`, or the Apps Script trigger), "Watched" (from `/watched`), "Trend Reset" (from `/trend reset`)
+- Type values: "Rank Changed" (from `/rank`, `/watched`, or the Apps Script trigger), "Watched" (from `/watched`), "Trend Reset" (from `/trend reset`), "Note Replaced" (the old review text, from `/note`, `/watched` or the Apps Script trigger; Detail = `<sheet>: <old note>`)
 
 ## Telegram bot
 
@@ -123,7 +123,8 @@ that doesn't show up in the menu.
 | `/tag <title> | <tag>` | Append a tag to a movie's Tags field across all sheets where it appears |
 | `/untag <title> | <tag>` | Remove a tag from a movie's Tags field across all sheets where it appears (case-insensitive match) |
 | `/newtag <tag> | <vibe\|style\|category> [| <#hexcolor>]` | Register a new tag with a type (persisted to `tags.json`); `category` tags require a hex color, `vibe`/`style` share one color per type |
-| `/note <title> | <note text>` | Add/update Notes field |
+| `/note <title> | <note text>` | Add/update Notes field; the previous note is saved to History first |
+| `/notehistory <title>` | Show a movie's current note and every earlier version (newest replaced first) |
 | `/find <query>` | Search every tab and every column in the spreadsheet (not just Title) |
 | `/omdb <title>` | OMDb lookup without touching any sheet |
 | `/watchlist [tag]` | Show Watch List, optionally filtered by tag |
@@ -203,6 +204,20 @@ elsewhere. Logged as `"Rank Changed"` with detail `"Movies: (new) → <rank>"`
 (vs. `"<old> → <new>"` for an existing movie) so History distinguishes the two.
 Tags/Notes are not set by this path — same as `/rank`'s existing behavior for
 already-present movies, since `/rank` never touches those fields.
+
+### Previous reviews are kept (fixes #28)
+`/note` and a rewatch via `/watched` used to overwrite the Notes cell, losing the old review.
+Both now call `_save_old_note(ss, sheet, title, old, new)` first, which appends a
+`"Note Replaced"` History row (Detail = `<sheet>: <old note>`). It does nothing if there was
+no old note or it is unchanged. It writes with `_append_log(..., strict=True)`, which
+re-raises on failure (unlike normal logging, which swallows errors): if the old note can't
+be saved, the overwrite is aborted and the user is told, rather than losing the review
+silently. `/notehistory <title>` reads them back with the current note. `/history` hides
+`Note Replaced` rows (whole old reviews, possibly spoilers) and the web UI ignores the type,
+since it only reads Watched, Rank Changed and Trend Reset. `history_trigger.gs` also logs
+`Note Replaced` when a Notes cell is edited or cleared by hand in the Movies sheet — it must
+be re-pasted into Extensions → Apps Script to take effect. The same review on several tabs
+is saved once per `/note` call.
 
 ### `/history` filtering
 Watch list rank changes (Watch Order updates) are excluded. Only "Rank Changed" events
