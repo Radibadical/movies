@@ -46,6 +46,9 @@
       background: #2d5a8e;
     }
     .title-text { text-align: center; flex-shrink: 0; }
+    .lb-link { display: flex; flex-shrink: 0; opacity: 0.75; transition: opacity 0.15s; }
+    .lb-link:hover, .lb-link:focus-visible { opacity: 1; }
+    .lb-link svg { width: 42px; height: 25px; display: block; }
     .title-byline {
       font-size: 0.7rem;
       font-weight: 600;
@@ -382,6 +385,13 @@
       header, .toolbar, .page-nav, .bottom-nav { padding-left: 1rem; padding-right: 1rem; }
       .page-tab { padding-left: 0.75rem; padding-right: 0.75rem; }
       .search { width: 100%; }
+      header { gap: 0.75rem; }
+      .site-title { gap: 0.5rem; min-width: 0; }
+      .title-main { font-size: 1.25rem; }
+      .lb-link svg { width: 34px; height: 20px; }
+    }
+    @media (max-width: 359px) {
+      .title-main { font-size: 1.05rem; letter-spacing: 0.5px; }
     }
 
     /* ── History badges ── */
@@ -428,6 +438,9 @@
     </div>
     <span class="title-rule"></span>
   </div>
+  <a class="lb-link" href="https://letterboxd.com/radibadical/" target="_blank" rel="noopener" aria-label="Radibadical on Letterboxd" title="Radibadical on Letterboxd">
+    <svg viewBox="0 0 42 25" aria-hidden="true"><circle cx="8.5" cy="12.5" r="7.5" fill="#ff8000"/><circle cx="21" cy="12.5" r="7.5" fill="#00e054"/><circle cx="33.5" cy="12.5" r="7.5" fill="#40bcf4"/></svg>
+  </a>
 </header>
 
 <nav class="page-nav">

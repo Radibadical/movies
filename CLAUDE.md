@@ -704,6 +704,11 @@ Brand gold `#a07820` matches the "Radibadical" byline color in the header.
 Title displays as "Radibadical / Top 200 Movies" with a "← radibadical" back link
 and an inline gold "R" SVG mark (`<svg class="site-icon">`).
 
+A Letterboxd icon (three coloured circles, inline SVG, `.lb-link`) sits at the right end of the
+header and links to `https://letterboxd.com/radibadical/` in a new tab (`rel="noopener"`).
+The phone media query shrinks the header gap, title size and icon so nothing overlaps or
+overflows from 320px up; check `scrollWidth` against `clientWidth` if the header changes.
+
 Favicon links point to root-relative paths (`/favicon.svg`, `/favicon.png`,
 `/apple-touch-icon.png`) served from `Radibadical/radibadical.github.io`.
 
