@@ -45,11 +45,40 @@ def poster_ok(url: str) -> bool:
         return False
 
 
+def tmdb_poster(title: str, year: str, key: str) -> str:
+    """Best-effort poster URL from TMDB (stable image CDN), or '' if none found.
+
+    `key` is either a v3 API key (32 hex chars) or a v4 read-access token
+    (a long JWT starting with 'eyJ'); both work.
+    """
+    headers, params = {}, {}
+    if key.startswith("eyJ"):
+        headers["Authorization"] = f"Bearer {key}"
+    else:
+        params["api_key"] = key
+    for extra_params in ([{"year": year}] if year.isdigit() else []) + [{}]:
+        try:
+            r = requests.get(
+                "https://api.themoviedb.org/3/search/movie",
+                params={**params, "query": title, **extra_params},
+                headers=headers,
+                timeout=10,
+            )
+            results = r.json().get("results", []) if r.status_code == 200 else []
+        except (requests.RequestException, ValueError):
+            results = []
+        for hit in results:
+            if hit.get("poster_path"):
+                return f"https://image.tmdb.org/t/p/w500{hit['poster_path']}"
+    return ""
+
+
 def main() -> int:
     api_key = os.environ.get("OMDB_API_KEY", "")
     if not api_key:
         print("OMDB_API_KEY not set")
         return 1
+    tmdb_key = os.environ.get("TMDB_API_KEY", "")
     refresh = "--refresh" in sys.argv
 
     resp = requests.get(CSV_URL, timeout=30)
@@ -76,6 +105,7 @@ def main() -> int:
             print(f"  WARNING: same poster used for {titles} - one is probably wrong")
 
     fetched = 0
+    omdb_exhausted = False
     for row in rows:
         title = (row.get("Title") or "").strip()
         rank = (row.get("Rank") or "").strip()
@@ -86,45 +116,62 @@ def main() -> int:
             continue
         year = (row.get("Year") or "").strip()
         omdb_title = ALIASES.get(key, title).replace("\u2019", "'")
-        data = {}
-        # 1) title+year (disambiguates remakes), 2) title alone, 3) OMDb search.
-        attempts = [{"t": omdb_title, "y": year}] if year.isdigit() else []
-        attempts += [{"t": omdb_title}, {"s": omdb_title, "type": "movie"}]
-        for extra_params in attempts:
-            data = requests.get(
-                "https://www.omdbapi.com/",
-                params={"apikey": api_key, **extra_params},
-                timeout=10,
-            ).json()
-            if "s" in extra_params and data.get("Search"):
-                hit = data["Search"][0]  # best match first
+        poster = ""
+
+        if not omdb_exhausted:
+            data = {}
+            # 1) title+year (disambiguates remakes), 2) title alone, 3) OMDb search.
+            attempts = [{"t": omdb_title, "y": year}] if year.isdigit() else []
+            attempts += [{"t": omdb_title}, {"s": omdb_title, "type": "movie"}]
+            for extra_params in attempts:
                 data = requests.get(
                     "https://www.omdbapi.com/",
-                    params={"apikey": api_key, "i": hit["imdbID"]},
+                    params={"apikey": api_key, **extra_params},
                     timeout=10,
                 ).json()
+                if "s" in extra_params and data.get("Search"):
+                    hit = data["Search"][0]  # best match first
+                    data = requests.get(
+                        "https://www.omdbapi.com/",
+                        params={"apikey": api_key, "i": hit["imdbID"]},
+                        timeout=10,
+                    ).json()
+                if "limit" in data.get("Error", "").lower():
+                    break
+                # A match without a poster is often the wrong record (e.g. a bad
+                # sheet year hitting a different film), so keep trying.
+                if data.get("Response") == "True" and data.get("Poster", "N/A") != "N/A":
+                    break
             if "limit" in data.get("Error", "").lower():
-                break
-            # A match without a poster is often the wrong record (e.g. a bad
-            # sheet year hitting a different film), so keep trying.
-            if data.get("Response") == "True" and data.get("Poster", "N/A") != "N/A":
-                break
-        if data.get("Response") != "True":
-            error = data.get("Error", "")
-            print(f"  skip {title!r}: {error}")
-            if "limit" in error.lower():
-                print("OMDb daily limit hit; stopping. Re-run tomorrow.")
-                break
-            continue
-        poster = data.get("Poster", "")
-        if poster and poster != "N/A" and not poster_ok(poster.replace("http://", "https://")):
-            print(f"  OMDb's poster link for {title!r} is dead: {poster}")
-        elif poster and poster != "N/A":
-            extra[key] = {"poster": poster.replace("http://", "https://")}
+                omdb_exhausted = True
+                print("OMDb daily limit hit; using TMDB only for the rest of this run.")
+            elif data.get("Response") != "True":
+                print(f"  OMDb: no match for {title!r}: {data.get('Error', '')}")
+            else:
+                url = (data.get("Poster") or "").replace("http://", "https://")
+                if not url or url == "N/A":
+                    print(f"  OMDb: no poster for {title!r}")
+                elif poster_ok(url):
+                    poster = url
+                else:
+                    print(f"  OMDb: poster link for {title!r} is dead: {url}")
+
+        # Fallback: TMDB, when OMDb had no working poster.
+        if not poster and tmdb_key:
+            url = tmdb_poster(omdb_title, year, tmdb_key)
+            if url and poster_ok(url):
+                poster = url
+                print(f"  (TMDB) {title}")
+            else:
+                print(f"  TMDB: no poster for {title!r}")
+
+        if poster:
+            extra[key] = {"poster": poster}
             fetched += 1
-            print(f"  {title}")
-        else:
-            print(f"  no poster on OMDb for {title!r}")
+            if not poster.startswith("https://image.tmdb.org"):
+                print(f"  {title}")
+        elif not tmdb_key:
+            print(f"  (set TMDB_API_KEY to try a fallback source for {title!r})")
 
     with open(OUT_FILE, "w", encoding="utf-8") as f:
         json.dump(dict(sorted(extra.items())), f, indent=1, ensure_ascii=False)
