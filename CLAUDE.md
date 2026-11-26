@@ -593,7 +593,10 @@ the sheet stays the source of truth and you upload the files by hand.
   skipping anything already in the import file.
 - Both CSVs are git-ignored (they hold full reviews). Re-importing re-adds everything, so use it
   as a one-time load or expect Letterboxd to ask about duplicates.
-- Column names follow Letterboxd's documented import format from memory; check the first upload.
+- Format checked against letterboxd.com/about/importing-data/ (columns, YYYY-MM-DD dates, ratings 0.5-5,
+  1MB limit). Quotes inside text must be backslash-escaped, not doubled, so the writer uses
+  `doublequote=False, escapechar="\\"`. The page gives no watchlist-specific rules, so the
+  watchlist file reuses the same Title/Year/Directors columns (unverified).
 
 ### Spoiler-safe reviews (fixes #27, #30)
 

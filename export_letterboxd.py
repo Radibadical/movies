@@ -104,7 +104,7 @@ def main() -> int:
         (WATCHLIST_FILE, WATCHLIST_COLUMNS, watchlist),
     ):
         with open(path, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=columns)
+            writer = csv.DictWriter(f, fieldnames=columns, doublequote=False, escapechar="\\")
             writer.writeheader()
             writer.writerows(rows)
 
