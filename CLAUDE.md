@@ -591,8 +591,16 @@ the sheet stays the source of truth and you upload the files by hand.
   the unparsed ones are listed); Review is the Notes column.
 - `letterboxd-watchlist.csv` (Title, Year, Directors): Watch List tab only, no rating or review,
   skipping anything already in the import file.
-- Both CSVs are git-ignored (they hold full reviews). Re-importing re-adds everything, so use it
-  as a one-time load or expect Letterboxd to ask about duplicates.
+- **Incremental uploads (use these after the first full import):** `python export_letterboxd.py
+  --changed` compares the sheet with `letterboxd-snapshot.json` and writes only new or changed movies
+  to `letterboxd-changed.csv` plus new Watch List titles to `letterboxd-watchlist-new.csv`; it also
+  lists titles removed from the sheet, which an import can't delete. After uploading, run
+  `--mark-uploaded` to record the current sheet as uploaded (the snapshot is local and git-ignored;
+  `--changed` does not update it, so an upload you skip is not lost). Tested 2026-11-26: re-importing a
+  film with no WatchedDate and a new rating (Near Dark 5 to 4.5) updated the rating. Not tested:
+  films with a WatchedDate (existing diary entries match by film plus date, so a changed date
+  probably adds a new entry) and edits made on Letterboxd itself (they get overwritten).
+- All the CSVs and the snapshot are git-ignored (they hold full reviews). Letterboxd has no undo after an import is confirmed.
 - Format checked against letterboxd.com/about/importing-data/ (columns, YYYY-MM-DD dates, ratings 0.5-5,
   1MB limit). Quotes inside text must be backslash-escaped, not doubled, so the writer uses
   `doublequote=False, escapechar="\\"`. The page gives no watchlist-specific rules, so the
