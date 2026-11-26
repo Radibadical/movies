@@ -121,18 +121,12 @@ Letterboxd can't be synced automatically (it blocks bots), so update it by hand 
 from the sheet. Imports can't be undone, so upload only what changed.
 
 1. Run `python export_letterboxd.py --changed`. It writes `letterboxd-changed.csv` (new or changed
-   rated movies) and `letterboxd-watchlist-new.csv` (new Watch List titles), and lists anything you
-   removed from the sheet.
-2. **Rated movies:** go to https://letterboxd.com/import/ and upload `letterboxd-changed.csv`.
-   Check the match screen, fix any mismatched titles, then confirm. This importer marks every film
-   in the file as watched, which is right for this file only.
-3. **Watchlist:** open https://letterboxd.com/watchlist/ in a desktop browser and look for
-   "Import films to watchlist" (wording from third-party guides, not confirmed by Letterboxd), then
-   choose `letterboxd-watchlist-new.csv`. Check that the confirmation screen says watchlist, not
-   watched. Never upload this file at `/import/` (that would mark those
-   films as watched). Leave the "replace existing items" option off so it only adds.
-4. Anything the script listed as removed has to be deleted on Letterboxd by hand.
-5. Run `python export_letterboxd.py --mark-uploaded` so next month starts from here.
+   rated movies) and lists anything you removed from the sheet. Only the Movies tab is exported;
+   the Watch List is not synced to Letterboxd.
+2. Go to https://letterboxd.com/import/ and upload `letterboxd-changed.csv`. Check the match
+   screen, fix any mismatched titles, then confirm. Every film in the file is marked as watched.
+3. Anything the script listed as removed has to be deleted on Letterboxd by hand.
+4. Run `python export_letterboxd.py --mark-uploaded` so next month starts from here.
 
 Edits made on Letterboxd itself get overwritten by the next import of the same film, so change
 ratings and reviews in the sheet or bot, not on Letterboxd.

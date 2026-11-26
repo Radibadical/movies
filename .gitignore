@@ -5,8 +5,6 @@ __pycache__/
 .venv/
 *-context.txt
 letterboxd-import.csv
-letterboxd-watchlist.csv
 letterboxd-changed.csv
-letterboxd-watchlist-new.csv
 letterboxd-snapshot.json
 letterboxd-test.csv
