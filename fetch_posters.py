@@ -36,6 +36,15 @@ ALIASES = {
 }
 
 
+def poster_ok(url: str) -> bool:
+    """True if the URL currently serves an image (stale OMDb poster links 404)."""
+    try:
+        with requests.get(url, stream=True, timeout=15) as r:
+            return r.status_code == 200 and r.headers.get("content-type", "").startswith("image/")
+    except requests.RequestException:
+        return False
+
+
 def main() -> int:
     api_key = os.environ.get("OMDB_API_KEY", "")
     if not api_key:
@@ -52,6 +61,19 @@ def main() -> int:
             extra = json.load(f)
     except FileNotFoundError:
         extra = {}
+
+    # Drop entries whose image no longer loads so they get re-fetched below.
+    for key in list(extra):
+        if not poster_ok(extra[key]["poster"]):
+            print(f"  dead poster link, will re-fetch: {key!r}")
+            del extra[key]
+
+    seen = {}
+    for key, val in extra.items():
+        seen.setdefault(val["poster"], []).append(key)
+    for titles in seen.values():
+        if len(titles) > 1:
+            print(f"  WARNING: same poster used for {titles} - one is probably wrong")
 
     fetched = 0
     for row in rows:
@@ -95,7 +117,9 @@ def main() -> int:
                 break
             continue
         poster = data.get("Poster", "")
-        if poster and poster != "N/A":
+        if poster and poster != "N/A" and not poster_ok(poster.replace("http://", "https://")):
+            print(f"  OMDb's poster link for {title!r} is dead: {poster}")
+        elif poster and poster != "N/A":
             extra[key] = {"poster": poster.replace("http://", "https://")}
             fetched += 1
             print(f"  {title}")
