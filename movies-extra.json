@@ -2,6 +2,9 @@
  "12 angry men": {
   "poster": "https://m.media-amazon.com/images/M/MV5BYjE4NzdmOTYtYjc5Yi00YzBiLWEzNDEtNTgxZGQ2MWVkN2NiXkEyXkFqcGc@._V1_QL75_UX380_CR0,11,380,562_.jpg"
  },
+ "12 monkeys": {
+  "poster": "https://image.tmdb.org/t/p/w500/gt3iyguaCIw8DpQZI1LIN5TohM2.jpg"
+ },
  "13 assassins": {
   "poster": "https://m.media-amazon.com/images/M/MV5BODg3MTYwODY3MF5BMl5BanBnXkFtZTcwMDk2MzYwNQ@@._V1_QL75_UX380_CR0,0,380,562_.jpg"
  },
@@ -185,6 +188,9 @@
  "go": {
   "poster": "https://m.media-amazon.com/images/M/MV5BMjkyZDU1YjctYmZkNC00Nzg0LWE3ZDEtYjFlMzYzYjMzNDQ3XkEyXkFqcGc@._V1_QL75_UX380_CR0,0,380,562_.jpg"
  },
+ "good will hunting": {
+  "poster": "https://image.tmdb.org/t/p/w500/z2FnLKpFi1HPO7BEJxdkv6hpJSU.jpg"
+ },
  "goodfellas": {
   "poster": "https://m.media-amazon.com/images/M/MV5BN2E5NzI2ZGMtY2VjNi00YTRjLWI1MDUtZGY5OWU1MWJjZjRjXkEyXkFqcGc@._V1_QL75_UX380_CR0,3,380,562_.jpg"
  },
@@ -259,6 +265,9 @@
  },
  "manhattan": {
   "poster": "https://m.media-amazon.com/images/M/MV5BMzhjMjEyOWItMWU2Ni00ZTE5LWFhODEtZGU1MTQyZjU4ODkzXkEyXkFqcGc@._V1_QL75_UX380_CR0,7,380,562_.jpg"
+ },
+ "memento": {
+  "poster": "https://image.tmdb.org/t/p/w500/nzlv62aC0octS5AklAiWpXLX9Z0.jpg"
  },
  "menace ii society": {
   "poster": "https://m.media-amazon.com/images/M/MV5BMzQ1MTNhZWEtM2FmZS00ZjkzLWJhZWEtNzA5ZDllZmYzNjQ1XkEyXkFqcGc@._V1_QL75_UX380_CR0,4,380,562_.jpg"
@@ -458,8 +467,14 @@
  "the cook, the thief, his wife and her lover": {
   "poster": "https://m.media-amazon.com/images/M/MV5BZDc5ZWRmYzctODBlNy00Mjc1LWIyZGQtYWI5MTgyMDQzYjkzXkEyXkFqcGc@._V1_QL75_UX380_CR0,0,380,562_.jpg"
  },
+ "the deer hunter": {
+  "poster": "https://image.tmdb.org/t/p/w500/bbGtogDZOg09bm42KIpCXUXICkh.jpg"
+ },
  "the elephant man": {
   "poster": "https://m.media-amazon.com/images/M/MV5BMGE2MzViYzEtZDFmOC00YmViLWFkZTQtYmI2NmI3NDJjMDc0XkEyXkFqcGc@._V1_QL75_UX380_CR0,6,380,562_.jpg"
+ },
+ "the evil dead": {
+  "poster": "https://image.tmdb.org/t/p/w500/54C1qdaiSijIU5NeNb4WsPJdNkG.jpg"
  },
  "the exorcist": {
   "poster": "https://m.media-amazon.com/images/M/MV5BZjg3YjE4ZjAtYTdmYS00ZTBkLWE1ZjgtNzAzODUwNzRiYjlmXkEyXkFqcGc@._V1_QL75_UX380_CR0,8,380,562_.jpg"
