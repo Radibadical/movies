@@ -600,6 +600,11 @@ the sheet stays the source of truth and you upload the files by hand.
   film with no WatchedDate and a new rating (Near Dark 5 to 4.5) updated the rating. Not tested:
   films with a WatchedDate (existing diary entries match by film plus date, so a changed date
   probably adds a new entry) and edits made on Letterboxd itself (they get overwritten).
+- **Watchlist import goes through a different route than ratings.** `/import/` marks everything in the
+  file as watched. Per Letterboxd's docs, watchlist and list imports start from
+  `letterboxd.com/watchlist/` (appends by default; a "replace" option appears on the confirmation
+  screen). The exact button isn't described in their docs, so confirm it on the first use. The monthly
+  steps are in README.md ("Letterboxd (monthly update)").
 - All the CSVs and the snapshot are git-ignored (they hold full reviews). Letterboxd has no undo after an import is confirmed.
 - Format checked against letterboxd.com/about/importing-data/ (columns, YYYY-MM-DD dates, ratings 0.5-5,
   1MB limit). Quotes inside text must be backslash-escaped, not doubled, so the writer uses
