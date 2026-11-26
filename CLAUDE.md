@@ -576,6 +576,25 @@ back to `.title-text`, which the site header already uses with `flex-shrink: 0` 
 Main-table notes use `.poster-notes` to indent past the poster; the Recently Watched tab
 has no posters and keeps the smaller `.col-notes` indent.
 
+## Letterboxd export (issue #48)
+
+Letterboxd has no public API and its login sits behind a Cloudflare bot check, so headless
+browser automation (Playwright) cannot sign in. Do not retry that route. Instead
+`export_letterboxd.py` builds CSVs for Letterboxd's official importer (letterboxd.com/import/);
+the sheet stays the source of truth and you upload the files by hand.
+
+- Run: `python export_letterboxd.py` (needs `credentials.json`; read-only, never writes the sheet;
+  opens the sheet by ID because the read-only scope can't list Drive files by name).
+- `letterboxd-import.csv` (columns Title, Year, Directors, Rating, WatchedDate, Review): Movies
+  tab rows with an integer rank (all 5) or a star rating (`★ ★ ★ ✮` = 3.5, half stars kept).
+  WatchedDate comes from Last Watched (YYYY-MM-DD; unparseable or blank cells are left empty and
+  the unparsed ones are listed); Review is the Notes column.
+- `letterboxd-watchlist.csv` (Title, Year, Directors): Watch List tab only, no rating or review,
+  skipping anything already in the import file.
+- Both CSVs are git-ignored (they hold full reviews). Re-importing re-adds everything, so use it
+  as a one-time load or expect Letterboxd to ask about duplicates.
+- Column names follow Letterboxd's documented import format from memory; check the first upload.
+
 ### Spoiler-safe reviews (fixes #27, #30)
 
 The Notes column holds personal reviews, which can contain spoilers, so the site never
