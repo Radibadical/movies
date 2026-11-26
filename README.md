@@ -126,8 +126,10 @@ from the sheet. Imports can't be undone, so upload only what changed.
 2. **Rated movies:** go to https://letterboxd.com/import/ and upload `letterboxd-changed.csv`.
    Check the match screen, fix any mismatched titles, then confirm. This importer marks every film
    in the file as watched, which is right for this file only.
-3. **Watchlist:** start from https://letterboxd.com/watchlist/ and use its import option with
-   `letterboxd-watchlist-new.csv`. Never upload this file at `/import/` (that would mark those
+3. **Watchlist:** open https://letterboxd.com/watchlist/ in a desktop browser and look for
+   "Import films to watchlist" (wording from third-party guides, not confirmed by Letterboxd), then
+   choose `letterboxd-watchlist-new.csv`. Check that the confirmation screen says watchlist, not
+   watched. Never upload this file at `/import/` (that would mark those
    films as watched). Leave the "replace existing items" option off so it only adds.
 4. Anything the script listed as removed has to be deleted on Letterboxd by hand.
 5. Run `python export_letterboxd.py --mark-uploaded` so next month starts from here.
