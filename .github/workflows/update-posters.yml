@@ -20,6 +20,7 @@ jobs:
       - name: Fetch new posters
         env:
           OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: python fetch_posters.py
       - name: Commit if changed
         run: |

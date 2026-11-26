@@ -554,6 +554,11 @@ with no poster counts as a miss and falls through to the next lookup, because a 
 year can match a different film with no poster (e.g. Snatch 2000 vs 2001). `.github/workflows/update-posters.yml` runs it daily (and via manual
 "Run workflow") and commits `movies-extra.json` to `main` when it changes. Requires the
 `OMDB_API_KEY` repo secret (Settings → Secrets and variables → Actions).
+Each run also drops stored posters whose image link is dead (OMDb's older `_SX300.jpg`
+links rot) and falls back to TMDB (`image.tmdb.org`, stable CDN) when OMDb has no working
+poster. The fallback is optional: set the `TMDB_API_KEY` repo secret (a free v3 API key or
+v4 read-access token from themoviedb.org account settings); without it, such titles just show
+no poster and the log says so.
 
 **Poster sizes and viewing:** desktop thumbnails are 64×96 (`.poster`), phone cards 72×108
 (`.card-poster`). Devices that can hover (`@media (hover: hover)` via `matchMedia`) get a
